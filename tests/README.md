@@ -124,8 +124,12 @@ On 2026-09-18, the x86_64-linux Nix build and all flake checks passed using the
 committed nixpkgs lock, Go 1.26.7, GTK 4.22.4, and OpenSSH 10.5p1. Both X11 and
 native Wayland were exercised. The NixOS VM check ran with KVM.
 
-The service/FIDO revision requires fresh native CI and physical acceptance;
-prior release results do not establish its physical verification behavior.
+For version 0.3.0 on 2026-09-18, native x86-64 and ARM GitHub CI passed, including
+the x86-64 NixOS/UHID check. After deployment, the user confirmed that the passive
+touch popup appears when their physical YubiKey awaits touch and closes after
+touching it. This is a user-reported hardware acceptance result, not an automated
+test of every authenticator or transport. No deliberately incorrect PIN was used
+for this passive-monitor acceptance test.
 
 Public CI now schedules native x86-64 and ARM builds and GUI tests on GitHub
 Actions; the x86-64 job also runs the NixOS VM. The Actions run status is the
