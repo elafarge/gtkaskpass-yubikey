@@ -32,6 +32,13 @@ Required FIDO PIN verification is the default; compatibility providers must opt
 into `pinVerification = "off"`. Runtime closures now include libfido2 as well as
 GTK. Public device preferences persist independently of the in-memory cache.
 
+Version 0.3.0 replaces socket activation with graphical-session startup and adds
+read-only USB FIDO touch monitoring. The old `.socket` unit is removed; stop and
+disable it when upgrading a manual installation, then enable/start the `.service`
+after importing the graphical environment. NixOS owns that transition through
+the module. The daemon still serves its private socket, but never relies on a
+client connection to start monitoring. Cache entries are cleared on restart.
+
 ## CI
 
 `CI` runs on pushes to `main`, pull requests, and manual dispatch. The reusable

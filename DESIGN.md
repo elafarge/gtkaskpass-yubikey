@@ -48,6 +48,14 @@ Agent requests display in the local agent's graphical session, including when
 the request originated through forwarding. Askpass cannot infer a remote user's
 desktop from an agent request.
 
+The same service owns an independent, read-only USB FIDO touch monitor. Its
+device notifications have no askpass parent or SSH dependency and use the
+service's owning graphical-session environment. The service starts with
+`graphical-session.target`, remains running for that session, and stops with it.
+Its private request socket is an IPC endpoint, not a socket-activation trigger.
+One UID has one owning notification session; incoming requests do not replace
+that environment or redirect passive device popups to another desktop.
+
 ## OpenSSH protocol
 
 The adapter accepts zero or one prompt argument. A missing/empty prompt gets a
@@ -240,7 +248,7 @@ remain private. File-only key prompts have no reliable fingerprint association;
 their device choice remains request-local. Remove the preference file while the
 service is stopped to reset saved choices; this does not reset a hardware token.
 
-## Touch and success boundaries
+## Passive touch monitoring and success boundaries
 
 OpenSSH owns SSH signing, device selection for signing, hardware presence, and
 server authentication. PIN acceptance proves only that the selected device
@@ -248,16 +256,54 @@ accepted that PIN at that time. It does not prove the device holds the requested
 key or that OpenSSH will choose it. The askpass protocol cannot return a device
 selection alongside the PIN.
 
-Touch notifications are separate `none` requests. Dismiss hides the worker;
-SIGTERM/parent death ends it. Notification termination occurs on both success
-and failure and never validates a credential. The adapter cannot remain in a PIN
-request awaiting touch because SSH waits for the helper to finish before signing.
+`internal/touch` watches all accessible USB FIDO HID interfaces, independently
+of PIN support or SSH requests. Discovery reads kernel report descriptors under
+sysfs and rechecks descriptor/device metadata using read-only hidraw ioctls.
+Recognize application usage page F1D0/usage 1, respecting report IDs, lengths,
+global push/pop, and collection boundaries. Ambiguous/malformed descriptors are
+not interpreted. Devices are opened O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_NOFOLLOW.
+No HID writes, feature requests, CTAP commands, PIN checks, or extra assertions
+are issued by this component. Linux fans input reports out to separate readers;
+monitoring does not steal the signing application's response.
 
-OpenSSH may print notifications to a terminal instead of calling askpass. An agent
-may stop a notifier before asking for a PIN and not start a replacement. The
-service cannot invent a completion event or consume touch with a second FIDO
-assertion. A guaranteed post-PIN touch window would require signing integration
-beyond askpass, and is not claimed here.
+Rescan kernel metadata every second for startup/hotplug/ACL changes and poll
+open handles between scans. Bound watched devices to 32, metadata size to 4096
+bytes, reports to 1025 bytes, scan entries to 256, and active channels per device
+to 32. Clear raw report buffers after inspection and never log packet payloads.
+The retained state contains only device metadata, channel IDs, and deadlines.
+
+A valid CTAPHID_KEEPALIVE/UPNEEDED starts or refreshes a pending channel. PROCESSING
+refreshes an already pending channel but does not itself open a popup. A matching
+CBOR/error response or channel reinitialization ends that channel. Unrelated
+channels, ping traffic, continuation packets, malformed lengths, and broadcast
+channel IDs do not dismiss it. Three seconds without a relevant keepalive expires
+stale state; unplug/poll failure closes the device's pending state.
+
+One worker per device displays a popup while any observed channel remains pending.
+A latest-state mailbox prevents missed close events or unbounded queues. A 120ms
+presentation delay avoids flashing already-completed operations. Dismiss hides
+the worker until that pending episode ends; subsequent keepalives cannot reopen
+it. A later independent episode gets a new worker. Popup failure does not affect
+signing, and is diagnosed rather than causing a hardware action.
+
+Device-only labels are intentional: HID responses do not reliably identify an
+application, SSH key, or server. This also covers browser WebAuthn requests and
+forwarded-agent operations without special integration. Popups do not request
+activation or reuse desktop activation tokens. X11 uses the EWMH zero user-time
+hint; Wayland mapping focus is ultimately compositor policy. The separate app ID
+`io.github.gtkaskpass_yubikey.touch` permits compositor-specific rules.
+
+OpenSSH `none` touch helpers still retain their SIGTERM/parent-death lifetime,
+but their duplicate windows are suppressed when passive monitoring covers the
+connected interfaces and can display popups. Generic informational notifications
+are unchanged. Without usable coverage/session routing, the existing OpenSSH UI
+path remains enabled. `touchNotifications = false` disables passive monitoring.
+
+These notifications report a device presence request, not successful SSH or
+WebAuthn authentication. Completion, failure, cancellation, and observation timeout
+all close a popup. The monitor currently interprets FIDO2 USB keepalives, not
+legacy U2F polling or NFC/Bluetooth transports. The adapter is never kept in a
+PIN request awaiting touch; signing can proceed as soon as it returns the PIN.
 
 ## Tracing, packaging, and verification
 
@@ -270,8 +316,10 @@ the authentication result.
 
 Nix builds all three executables, wraps only the GTK worker, and supplies GTK4,
 CGO, libfido2, and runtime dependencies. The NixOS module installs the commands
-and socket-activated user service even with TTL zero. It exposes `cacheTTL` and
-`pinVerification`. Upgrade adapter/service/worker together; restarts clear caches.
+and graphical-session user service even with TTL zero. It exposes `cacheTTL`,
+`pinVerification`, and `touchNotifications`. Systemd manages the private runtime
+directory and its cleanup on restart; the daemon binds its own request socket.
+Upgrade adapter/service/worker together; restarts clear caches.
 The service runs as the user and relies on normal device ACLs rather than root.
 
 Protocol/controller/cache/device interfaces and preference storage are independent
@@ -284,7 +332,11 @@ and Openbox. Worker tests exercise chooser confirmation, cleared PIN retries, an
 private IPC. Real OpenSSH/agent/forwarding tests use disposable software FIDO
 keys in explicit unverified compatibility mode; they test SSH compatibility, not
 physical verification. Weston exercises native Wayland lifecycle; a NixOS VM
-tests socket activation and service configuration. Physical verification is
+tests graphical-session startup/shutdown, cache service configuration, and actual
+kernel UHID report observation with a disposable virtual device. The fixture
+also asserts that monitoring sends no output/feature reports. Pure-Go parser,
+fuzz, channel/timeout, popup lifecycle, and X11 no-focus tests cover monitoring.
+Physical verification is
 user-assisted with correct PINs only; do not automate wrong attempts on real keys.
 
 Run golangci-lint including integration code, formatting, vet, unit/race tests,

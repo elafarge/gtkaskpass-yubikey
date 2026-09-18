@@ -13,7 +13,8 @@
 | Agent PIN cases in integration | Real `ssh-agent` PIN prompts for software-backed FIDO test keys, repeated signature verification, fingerprint forgetting, and cache reuse through a genuine SSH agent-forwarding channel |
 | Worker IPC case | Actual GTK dropdown with saved preselection, explicit confirmation, PIN entry, verifying state, and cleared input on retry |
 | `checks.<system>.wayland` | Installed executable on a real headless Weston compositor; notification and input cancellation |
-| `checks.<system>.nixos` | Real systemd user socket activation, configured TTL, expiry, restart clearing, concurrent clients, and socket ownership/mode in a NixOS VM |
+| Passive touch tests | HID descriptor/report parsing, per-channel isolation, bounds, stale expiry, popup aggregation/cleanup, and non-activating X11 windows |
+| `checks.<system>.nixos` | Graphical-session startup before any requests, configured TTL, restart clearing, shutdown, socket ownership/mode, and kernel UHID touch input with no output/feature reports |
 
 The GTK suite runs under a private D-Bus session, Xvfb, and Openbox. It does not
 use the user's SSH agent or configuration. Its Go parent harness models
@@ -32,6 +33,13 @@ The test services use explicit `--pin-verification off` for this provider, which
 has no physical CTAP device. Required verification uses a pure-Go fake backend in
 service tests; it is not injectable into the production daemon.
 
+The NixOS test additionally creates a disposable USB-HID-shaped FIDO interface
+using `/dev/uhid`. It feeds `UPNEEDED` and completion reports through the actual
+Linux hidraw driver and checks the passive monitor's metadata events. The fixture
+fails if monitoring sends output or feature requests. This runs only in the VM;
+it never opens the user's physical token. Parser fuzz targets are in
+`internal/touch/report_test.go`.
+
 Run all checks with `nix flake check -L`. Run individual installed-package checks:
 
 ```sh
@@ -48,7 +56,7 @@ go build -o bin/ ./cmd/...
 golangci-lint run
 bash scripts/integration.sh
 go test -race ./internal/app ./internal/askpass ./internal/cache \
-  ./internal/cacheipc ./internal/lifecycle ./internal/trace ./internal/service ./internal/preferences
+  ./internal/cacheipc ./internal/lifecycle ./internal/trace ./internal/service ./internal/preferences ./internal/touch
 ```
 
 `ASKPASS_BIN` and `CACHE_BIN` can select alternate built executables for the GUI
@@ -90,7 +98,13 @@ identity authorized on a test SSH server:
    then request a signature through a forwarded agent on the test server. The
    first agent PIN prompt should offer remembering; subsequent operations for
    the same fingerprint should reuse it. Forget the fingerprint and verify that
-   input is requested again. Hardware touch is still owned by the token/provider.
+    input is requested again. Hardware touch is still owned by the token/provider.
+9. Enable `touchNotifications` (manual service: `--touch-monitor`) and test a
+   browser WebAuthn request as well as SSH/forwarded signing. The popup should
+   identify only the device, close on operation completion/error, and remain
+   hidden after dismissal until the pending episode ends. Unplug/replug should
+   remove/recreate monitoring automatically. The service must already be running
+   in the graphical session before any SSH/askpass request.
 
 The software-key integration tests cover wrong-answer retries without consuming
 physical authenticator PIN attempts. In required mode, only an explicit device

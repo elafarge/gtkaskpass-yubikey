@@ -56,6 +56,13 @@ nix flake check -L
   Never infer successful authentication from notification termination.
 - Dismissing a notification hides it without ending its process; parent death and
   SIGTERM still close it. Input cancellation returns nonzero without a response.
+- Passive device notifications are separate from SSH helpers. `internal/touch`
+  reads USB FIDO hidraw input only: no writes, feature reports, PIN probes, or
+  assertions. Never log raw HID payloads or interpret popup closure as success.
+  Track device/channel state and bound it; unrelated traffic must not dismiss
+  an operation. Keep monitoring independent of the verification device lock.
+- The service runs with the graphical session, not on socket activation. Passive
+  popups use that session's environment; incoming requests must not redirect it.
 - GTK must run on the worker's initial locked OS thread, with widget access on
   its main context. Each request has an independent UI worker; only the adapter
   writes the SSH response to stdout.
