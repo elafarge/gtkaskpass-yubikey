@@ -206,8 +206,8 @@ to a revision compatible with the selected nixpkgs GTK4 version. Use generated
 bindings as dependencies; build-time binding generation is unnecessary.
 
 GTK initialization, widget access, and the main loop run on the initial locked
-OS thread. Go signal/parent watchers dispatch shutdown onto the GLib main
-context. Completion is idempotent so submit, close, and signals cannot produce
+OS thread. Go signal/parent watchers cancel a context; a 50ms GLib timer observes
+cancellation and shuts down on the GTK thread. Completion is idempotent so submit, close, and signals cannot produce
 duplicate output or leave a blocked main loop.
 
 Use a non-unique GTK application: each invocation has its own process, window,

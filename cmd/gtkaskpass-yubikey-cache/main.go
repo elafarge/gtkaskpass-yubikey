@@ -20,6 +20,7 @@ import (
 )
 
 func main() {
+	signal.Ignore(syscall.SIGPIPE)
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "gtkaskpass-yubikey-cache:", err)
 		os.Exit(2)
