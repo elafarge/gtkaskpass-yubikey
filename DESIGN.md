@@ -503,9 +503,9 @@ tests, and keep trace writes out of the cache's critical sections.
 - The development shell supplies Go, compiler/pkg-config, GTK dependencies, and
   integration-test tools. The wrapped installed executable must work outside
   that shell, with themes and icons available.
-- Provide package metadata, `mainProgram`, Linux platforms, and
-  `meta.license = lib.licenses.asl20` (Apache-2.0). Add a homepage once a repository
-  URL exists.
+- Provide package metadata, `mainProgram`, Linux platforms,
+  `meta.license = lib.licenses.asl20` (Apache-2.0), and the public repository
+  homepage at `https://github.com/elafarge/gtkaskpass-yubikey`.
 
 Example consuming NixOS configuration with caching (the flake input is named
 `gtkaskpass-yubikey`):
@@ -625,6 +625,8 @@ supports it.
 ### Required checks during implementation
 
 - `gofmt`, `go vet ./...`, and `go test ./...` in the development environment.
+- `golangci-lint run`, configured by `.golangci.yml`, checks production code and
+  integration-tagged tests. It is also part of the Nix package check phase.
 - Race-detector tests for the pure-Go controller/protocol/lifecycle/cache/IPC
   packages, including concurrent cache clients.
 - Explicit integration target for GUI and real OpenSSH tests; Nix checks invoke
@@ -659,15 +661,34 @@ from the commit body by a blank line:
 Assisted-by: OpenAI gpt-6-astra (opencode/gpt-6-astra)
 ```
 
-Use concise imperative commit subjects. No remote or GitHub push is part of
-this work. If Git author identity is missing, request it rather than inventing
-an identity or changing Git configuration.
+Use concise imperative commit subjects. Initial implementation stayed local;
+the user subsequently authorized public publication under `elafarge` and CI/CD.
+If Git author identity is missing, request it rather than inventing an identity
+or changing Git configuration.
 
-### 9.1 License decision
+### 9.1 Public CI/CD
+
+GitHub Actions uses standard public x86-64 and ARM Linux runners with read-only
+permissions for pull requests and ordinary checks. Both architectures run the
+native package/lint/unit/race and GUI checks; the KVM-dependent NixOS VM runs on
+x86-64. Third-party Actions are pinned to commit SHAs and tracked by Dependabot.
+
+Version tags matching the Nix package version trigger a checked release pipeline.
+Native runtime closures and checksums are uploaded directly to an unpublished
+GitHub Release. The final publishing job verifies both architectures, source
+revisions, and GitHub's asset digests before making it public. Write permissions
+are limited to release publishing jobs. No Actions artifact/cache storage is used.
+
+Public GitHub Packages is free but lacks a native Go/Nix registry. GitHub Releases
+fits this application's prebuilt Nix distribution. Cost references and the exact
+release/installation procedure are maintained in `docs/RELEASING.md`.
+
+### 9.2 License decision
 
 The user selected **Apache License, Version 2.0** (`Apache-2.0`) for this project's
 code and documentation. The full license text is in `LICENSE`; project metadata
 uses the same SPDX identifier.
+The copyright owner is Étienne Lafarge, explicitly recorded in `LICENSE`.
 Third-party dependencies retain their own licenses and required notices.
 
 ## 10. Review points and confirmed decisions
@@ -681,8 +702,8 @@ Third-party dependencies retain their own licenses and required notices.
    candidates: same-caller re-prompts bypass them, but failures without a
    re-prompt cannot be detected through askpass alone (section 5.1).
 4. **License (confirmed):** Apache-2.0 for project code and documentation.
-5. **Go module path:** local module `gtkaskpass-yubikey`; a public repository
-   path can replace it when the project is published.
+5. **Go module path:** `github.com/elafarge/gtkaskpass-yubikey`, updated from the
+   initial local module path when public publication was authorized.
 
 Implementation verification and physical-token acceptance steps are recorded in
 `tests/README.md`. The application uses gotk4 v0.4.1 with the pinned Nix GTK4

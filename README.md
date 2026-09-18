@@ -1,5 +1,7 @@
 # gtkaskpass-yubikey
 
+[![CI](https://github.com/elafarge/gtkaskpass-yubikey/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/elafarge/gtkaskpass-yubikey/actions/workflows/ci.yml)
+
 A Linux SSH askpass helper written in Go with GTK4. It provides passphrase/PIN
 entry, SSH confirmation dialogs, security-key touch notifications, and a per-user
 in-memory credential cache. Works on Wayland and X11.
@@ -7,7 +9,7 @@ in-memory credential cache. Works on Wayland and X11.
 ## Build and try it
 
 ```sh
-nix build
+nix build github:elafarge/gtkaskpass-yubikey
 export SSH_ASKPASS="$PWD/result/bin/gtkaskpass-yubikey"
 export SSH_ASKPASS_REQUIRE=prefer
 ```
@@ -34,8 +36,13 @@ Normally OpenSSH receives that output through a private pipe.
 
 ## NixOS
 
-Add this repository as a flake input. While developing locally, its URL can be
-`path:/absolute/path/to/gtkaskpass-yubikey`. Then import its module:
+Add this repository as a flake input:
+
+```nix
+inputs.gtkaskpass-yubikey.url = "github:elafarge/gtkaskpass-yubikey";
+```
+
+Then import its module (with `inputs` supplied through your NixOS `specialArgs`):
 
 ```nix
 { inputs, ... }: {
@@ -196,6 +203,7 @@ independently of daemon restarts.
 ```sh
 nix develop
 go build -o bin/ ./cmd/...
+golangci-lint run
 go test ./...
 go vet ./...
 bash scripts/integration.sh
@@ -211,7 +219,7 @@ The complete reproducible check suite is:
 nix flake check -L
 ```
 
-It runs Go unit/race checks, real GTK dialogs under Xvfb, real `ssh-add`
+It runs golangci-lint, Go unit/race checks, real GTK dialogs under Xvfb, real `ssh-add`
 integration with disposable keys/an agent, a headless Weston Wayland smoke test,
 and a NixOS VM test of the socket-activated user service. The VM check needs a
 builder with KVM support. GUI tests drive the real executable using external
@@ -221,6 +229,23 @@ See [tests/README.md](tests/README.md) for test layers, individual commands, and
 physical-token acceptance testing. See [DESIGN.md](DESIGN.md) for the protocol and
 architecture decisions.
 
+## CI and releases
+
+GitHub Actions checks pushes and pull requests on native x86-64 and ARM Linux
+runners. It includes golangci-lint, the real GUI/OpenSSH suites, and the x86-64
+NixOS VM check. `AGENTS.md` records contributor and coding-agent conventions.
+
+Pushing a stable `vMAJOR.MINOR.PATCH` tag matching the Nix package version runs
+the release pipeline. After all checks pass, it publishes native Nix runtime
+closures, metadata, and SHA-256 checksums to
+[GitHub Releases](https://github.com/elafarge/gtkaskpass-yubikey/releases).
+
+This uses free standard public Actions runners and release downloads, without
+Actions artifact storage. GitHub Packages is free for public packages but has no
+native Nix/Go registry, so release assets are the distribution channel here.
+See [docs/RELEASING.md](docs/RELEASING.md) for the billing references, release
+procedure, permissions, and prebuilt-package installation instructions.
+
 ## License
 
-Apache License, Version 2.0. See [LICENSE](LICENSE).
+Copyright 2026 Étienne Lafarge. Apache License, Version 2.0. See [LICENSE](LICENSE).

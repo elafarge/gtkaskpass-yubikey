@@ -1,0 +1,55 @@
+name: Checks
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux (${{ matrix.system }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            system: x86_64-linux
+            kvm: true
+          - runner: ubuntu-24.04-arm
+            system: aarch64-linux
+            kvm: false
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    env:
+      SYSTEM: ${{ matrix.system }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+        with:
+          enable_kvm: ${{ matrix.kvm }}
+          extra_nix_config: |
+            max-jobs = 2
+            cores = 2
+            system-features = nixos-test benchmark big-parallel ${{ matrix.kvm && 'kvm' || '' }}
+      - name: Validate workflow and shell syntax
+        if: matrix.kvm
+        run: nix build --no-link -L ".#checks.$SYSTEM.tooling"
+      - name: Build, lint, unit/race tests, X11/OpenSSH and Wayland
+        run: |
+          nix build --no-link -L \
+            ".#checks.$SYSTEM.package" \
+            ".#checks.$SYSTEM.integration" \
+            ".#checks.$SYSTEM.wayland"
+      - name: NixOS user-service VM test
+        if: matrix.kvm
+        run: |
+          test -r /dev/kvm && test -w /dev/kvm
+          nix build --no-link -L ".#checks.$SYSTEM.nixos"
+      - name: Validate release version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: bash scripts/release.sh check-tag "$TAG" "$SYSTEM"

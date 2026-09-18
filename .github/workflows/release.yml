@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml
+
+  draft:
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Create or reuse an unpublished draft
+        run: |
+          if gh release view "$TAG" --json isDraft > release.json; then
+            jq -e '.isDraft == true' release.json
+          else
+            gh release create "$TAG" --draft --verify-tag --title "$TAG" --generate-notes
+          fi
+
+  bundles:
+    needs: draft
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            system: x86_64-linux
+          - runner: ubuntu-24.04-arm
+            system: aarch64-linux
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+      SYSTEM: ${{ matrix.system }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+        with:
+          enable_kvm: false
+          extra_nix_config: |
+            max-jobs = 2
+            cores = 2
+      - name: Build the native Nix runtime closure
+        run: nix develop --command bash scripts/release.sh bundle "$TAG" "$SYSTEM" dist
+      - name: Upload directly to the draft release
+        run: |
+          gh release view "$TAG" --json isDraft --jq '.isDraft' | grep -qx true
+          gh release upload "$TAG" dist/*.nar.zst dist/*.json dist/*.sha256 --clobber
+
+  publish:
+    needs: bundles
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify both architectures and uploaded asset digests
+        run: |
+          gh api "repos/$GH_REPO/releases/tags/$TAG" > release.json
+          gh release download "$TAG" --pattern '*.json' --pattern '*.sha256' --dir dist
+          python3 scripts/verify-release.py "$TAG" "$(git rev-parse HEAD)" release.json dist
+      - name: Publish the complete release
+        run: gh release edit "$TAG" --draft=false --latest

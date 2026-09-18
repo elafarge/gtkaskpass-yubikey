@@ -6,6 +6,7 @@
 | --- | --- |
 | Go unit tests | Prompt/hint precedence, response bytes/limits, cache identity and generations, absolute expiry, retry invalidation, IPC bounds/permissions, parent lifetime, trace redaction |
 | Go race detector | Concurrent core/controller/cache/IPC operations |
+| golangci-lint | Standard Go correctness linters plus gofmt, including integration-tagged code |
 | `checks.<system>.integration` | Installed GTK executable on X11: input, empty response, cancellation/window-close, confirmation, signals, parent death, simultaneous windows, cache hits, expiry, key-file changes, forgetting, daemon loss, broken trace pipe |
 | OpenSSH cases in integration | Real `ssh-add` wrong-answer retry, successful load, removal/re-add using cache, and cancellation, with an isolated agent and synthetic encrypted key |
 | `checks.<system>.wayland` | Installed executable on a real headless Weston compositor; notification and input cancellation |
@@ -29,6 +30,7 @@ For fast iteration:
 ```sh
 nix develop
 go build -o bin/ ./cmd/...
+golangci-lint run
 bash scripts/integration.sh
 go test -race ./internal/app ./internal/askpass ./internal/cache \
   ./internal/cacheipc ./internal/lifecycle ./internal/trace
@@ -81,3 +83,8 @@ native Wayland were exercised. The NixOS VM check ran with KVM.
 
 The aarch64-linux outputs are provided but have not been built on an ARM builder.
 Physical YubiKey acceptance has not been performed in this environment.
+
+Public CI now schedules native x86-64 and ARM builds and GUI tests on GitHub
+Actions; the x86-64 job also runs the NixOS VM. The Actions run status is the
+source of truth for verification of a particular pushed commit. Release tooling
+has separate checksum/metadata-gate tests under `tests/release/`.

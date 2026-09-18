@@ -25,6 +25,23 @@
           package = self.packages.${system}.default;
         in {
           inherit package;
+          tooling = pkgs.runCommand "gtkaskpass-tooling-checks" {
+            nativeBuildInputs = with pkgs; [ actionlint shellcheck python3 ];
+          } ''
+            cp -r ${pkgs.lib.fileset.toSource {
+              root = ./.;
+              fileset = pkgs.lib.fileset.unions [
+                ./.github ./scripts/integration.sh ./scripts/release.sh
+                ./scripts/verify-release.py ./tests/release
+              ];
+            }} source
+            chmod -R u+w source
+            cd source
+            actionlint .github/workflows/*.yml
+            shellcheck scripts/*.sh
+            python3 -B -m unittest discover -s tests/release
+            touch "$out"
+          '';
           integration = pkgs.runCommand "gtkaskpass-integration" {
             nativeBuildInputs = with pkgs; [ go dbus xvfb-run xdotool openbox openssh ];
           } ''
