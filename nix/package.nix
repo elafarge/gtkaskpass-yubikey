@@ -19,6 +19,7 @@ buildGoModule {
   checkPhase = ''
     runHook preCheck
     test -z "$(gofmt -l cmd internal tests)"
+    export GOLANGCI_LINT_CACHE="$TMPDIR/golangci-lint"
     golangci-lint run
     go vet ./...
     go test ./...
