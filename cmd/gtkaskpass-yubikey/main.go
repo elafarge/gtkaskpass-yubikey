@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"os/signal"
 	"runtime"
@@ -17,6 +18,14 @@ import (
 func init() { runtime.LockOSThread() }
 
 func main() {
+	// gotk4 routes GLib/GDK messages through slog.Default(). Native renderer
+	// information is noisy (particularly Vulkan); retain warnings and errors.
+	// The askpass trace uses its own logger and is unaffected by this threshold.
+	level := slog.LevelWarn
+	if os.Getenv("G_MESSAGES_DEBUG") != "" {
+		level = slog.LevelDebug
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
 	// Broken tracing pipes must not terminate the helper; stdout failures should
 	// be reported through the normal nonzero exit path as well.
 	signal.Ignore(syscall.SIGPIPE)

@@ -180,6 +180,12 @@ GTKASKPASS_TRACE=secrets SSH_ASKPASS_REQUIRE=force ssh user@host
 `secrets` explicitly prints credentials to stderr and any log receiving it.
 Tracing is off by default and never changes askpass stdout.
 
+GTK/GDK informational messages (including verbose Vulkan initialization) are
+suppressed by default; warnings and errors remain on stderr. Set
+`G_MESSAGES_DEBUG=all` explicitly when troubleshooting native GTK rendering.
+This is independent of `GTKASKPASS_TRACE`, whose metadata mode stays useful
+without the renderer log flood.
+
 Daemon tracing is metadata-only:
 
 ```sh
