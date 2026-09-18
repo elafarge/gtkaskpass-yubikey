@@ -1,11 +1,16 @@
 [Unit]
-Description=SSH askpass in-memory credential cache
-Requires=gtkaskpass-yubikey-cache.socket
-After=gtkaskpass-yubikey-cache.socket
+Description=SSH askpass service and passive FIDO2 touch monitor
+PartOf=graphical-session.target
+After=graphical-session-pre.target
 
 [Service]
-ExecStart=@bindir@/gtkaskpass-yubikey-cache serve --ttl 1h
+ExecStart=@bindir@/gtkaskpass-yubikey-cache serve --ttl 1h --touch-monitor
 Restart=on-failure
+RuntimeDirectory=gtkaskpass-yubikey
+RuntimeDirectoryMode=0700
 NoNewPrivileges=true
 LimitCORE=0
 UMask=0077
+
+[Install]
+WantedBy=graphical-session.target

@@ -230,29 +230,15 @@ func Call(ctx context.Context, req Request) (Response, error) {
 	return resp, nil
 }
 
-// Listen supports systemd user socket activation and exclusive standalone bind.
+// Listen binds the session service's private endpoint exclusively. Systemd owns
+// its runtime directory, but no longer owns or activates a separate socket unit.
 func Listen() (*net.UnixListener, error) {
 	p, err := SocketPath(true)
 	if err != nil {
 		return nil, err
 	}
 	if os.Getenv("LISTEN_PID") == strconv.Itoa(os.Getpid()) && os.Getenv("LISTEN_FDS") != "" {
-		if os.Getenv("LISTEN_FDS") != "1" {
-			return nil, errors.New("expected exactly one activation socket")
-		}
-		f := os.NewFile(3, "activation-socket")
-		defer closeQuietly(f)
-		l, err := net.FileListener(f)
-		if err != nil {
-			return nil, err
-		}
-		u, ok := l.(*net.UnixListener)
-		if !ok || l.Addr().String() != p {
-			closeQuietly(l)
-			return nil, errors.New("unexpected activation socket")
-		}
-		u.SetUnlinkOnClose(false)
-		return u, nil
+		return nil, errors.New("socket activation is no longer supported; disable the .socket unit and start the graphical-session service")
 	}
 	l, err := net.ListenUnix("unix", &net.UnixAddr{Name: p, Net: "unix"})
 	if err != nil {

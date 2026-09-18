@@ -22,28 +22,26 @@ in {
       default = "required";
       description = "Verify FIDO PINs against the selected device; off is unverified compatibility mode.";
     };
+    touchNotifications = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Passively monitor USB FIDO2 user-presence requests and show device-level popups in the service's graphical session.";
+    };
   };
   config = lib.mkIf cfg.enable {
     programs.ssh.enableAskPassword = true;
     programs.ssh.askPassword = executable;
     environment.systemPackages = [ cfg.package ];
-    systemd.user.sockets.gtkaskpass-yubikey-cache = {
-      description = "SSH askpass credential cache socket";
-      wantedBy = [ "sockets.target" ];
-      socketConfig = {
-        ListenStream = "%t/gtkaskpass-yubikey/cache.sock";
-        SocketMode = "0600";
-        DirectoryMode = "0700";
-        RemoveOnStop = true;
-      };
-    };
     systemd.user.services.gtkaskpass-yubikey-cache = {
-      description = "SSH askpass in-memory credential cache";
-      requires = [ "gtkaskpass-yubikey-cache.socket" ];
-      after = [ "gtkaskpass-yubikey-cache.socket" ];
+      description = "SSH askpass service and passive FIDO2 touch monitor";
+      wantedBy = [ "graphical-session.target" ];
+      partOf = [ "graphical-session.target" ];
+      after = [ "graphical-session-pre.target" ];
       serviceConfig = {
-        ExecStart = "${cfg.package}/bin/gtkaskpass-yubikey-cache serve --ttl ${cfg.cacheTTL} --pin-verification ${cfg.pinVerification}";
+        ExecStart = "${cfg.package}/bin/gtkaskpass-yubikey-cache serve --ttl ${cfg.cacheTTL} --pin-verification ${cfg.pinVerification}" + lib.optionalString cfg.touchNotifications " --touch-monitor";
         Restart = "on-failure";
+        RuntimeDirectory = "gtkaskpass-yubikey";
+        RuntimeDirectoryMode = "0700";
         NoNewPrivileges = true;
         LimitCORE = 0;
         UMask = "0077";

@@ -15,6 +15,7 @@ type View struct {
 	Devices      []device.Device
 	Selected     int
 	ChangeDevice bool
+	PassiveTouch bool
 }
 type Action struct {
 	Kind     string

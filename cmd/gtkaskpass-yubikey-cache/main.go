@@ -19,6 +19,7 @@ import (
 	"github.com/elafarge/gtkaskpass-yubikey/internal/lifecycle"
 	"github.com/elafarge/gtkaskpass-yubikey/internal/preferences"
 	"github.com/elafarge/gtkaskpass-yubikey/internal/service"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/touch"
 	"github.com/elafarge/gtkaskpass-yubikey/internal/trace"
 	"golang.org/x/sys/unix"
 )
@@ -33,7 +34,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: gtkaskpass-yubikey-cache serve [--ttl 1h] [--pin-verification required|off] [--trace] | devices | forget (--all | --fingerprint SHA256:... | --key PATH --kind passphrase|pin)")
+		return errors.New("usage: gtkaskpass-yubikey-cache serve [--ttl 1h] [--pin-verification required|off] [--touch-monitor] [--trace] | devices | forget (--all | --fingerprint SHA256:... | --key PATH --kind passphrase|pin)")
 	}
 	f := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	f.SetOutput(os.Stderr)
@@ -51,6 +52,7 @@ func run(args []string) error {
 		ttl := f.Duration("ttl", time.Hour, "absolute credential lifetime; 0 disables caching")
 		tracing := f.Bool("trace", false, "trace metadata to stderr")
 		verification := f.String("pin-verification", "required", "required or off (unverified compatibility mode)")
+		monitorTouch := f.Bool("touch-monitor", false, "passively monitor USB FIDO2 touch requests in this graphical session")
 		if err := f.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -82,6 +84,24 @@ func run(args []string) error {
 			return err
 		}
 		svc := &service.Service{Cache: store, Devices: fido.Backend{}, VerifyPIN: *verification == "required", Preferences: preferences.New(filepath.Join(configDir, "gtkaskpass-yubikey", "devices.json")), WorkerPath: filepath.Join(filepath.Dir(executable), "gtkaskpass-yubikey-ui")}
+		if *monitorTouch {
+			env := map[string]string{}
+			for _, k := range service.SessionKeys {
+				env[k] = os.Getenv(k)
+			}
+			popups := service.NewTouchPopups(svc.WorkerPath, env)
+			monitor := &touch.Monitor{Sink: popups, Diagnostic: func(message string) { _, _ = fmt.Fprintln(os.Stderr, "gtkaskpass:", message) }}
+			monitor.Event = func(d touch.Device, active bool) { log.Event("touch-state", "device", d.Path, "needed", active) }
+			svc.TouchMonitored = func() bool { return monitor.Covered() && popups.Available() }
+			monitorCtx, cancel := context.WithCancel(ctx)
+			doneMonitor, donePopups := make(chan struct{}), make(chan struct{})
+			go func() { defer close(donePopups); popups.Run(monitorCtx) }()
+			go func() { defer close(doneMonitor); monitor.Run(monitorCtx) }()
+			defer func() { cancel(); <-doneMonitor; <-donePopups }()
+			if !popups.Available() {
+				_, _ = fmt.Fprintln(os.Stderr, "gtkaskpass: no graphical session environment for touch popups")
+			}
+		}
 		return cacheipc.Serve(ctx, l, store, log, svc.Handle)
 	case "forget":
 		all := f.Bool("all", false, "forget every key")

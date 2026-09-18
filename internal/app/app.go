@@ -37,7 +37,7 @@ func (a App) Run(parent context.Context, args []string) (code int) {
 	}
 	c, err := cacheipc.Dial(ctx)
 	if err != nil {
-		_, _ = fmt.Fprintln(a.Err, "gtkaskpass: request service unavailable; enable gtkaskpass-yubikey-cache.socket")
+		_, _ = fmt.Fprintln(a.Err, "gtkaskpass: request service unavailable; start gtkaskpass-yubikey-cache.service in your graphical session")
 		return 2
 	}
 	defer func() { _ = c.Close() }()

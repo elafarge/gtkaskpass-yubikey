@@ -27,6 +27,9 @@ type Service struct {
 	WorkerPath  string
 	VerifyPIN   bool
 	NewUI       func(context.Context, map[string]string) (UI, error)
+	// Set only when the independent HID monitor covers the connected FIDO
+	// devices and can route popups to its graphical session.
+	TouchMonitored func() bool
 	// Global hardware serialization is deliberately conservative. It prevents
 	// concurrent requests from trying the same rejected cached PIN repeatedly.
 	hardware chan struct{}
@@ -68,6 +71,12 @@ func (s *Service) Handle(parent context.Context, c *net.UnixConn, in cacheipc.Re
 	if !send(cacheipc.Response{Event: "accepted", Notify: req.Mode == askpass.Notify}) {
 		return
 	}
+	if req.Mode == askpass.Notify && req.Touch && s.TouchMonitored != nil && s.TouchMonitored() {
+		// OpenSSH still owns this helper lifetime. Device popups have their own
+		// lifecycle and survive the agent ending a pre-PIN notification.
+		<-ctx.Done()
+		return
+	}
 	// Verify caller-supplied runtime is the current user's runtime, not a route
 	// to another user's desktop. No service environment is overwritten.
 	if v := in.Env["XDG_RUNTIME_DIR"]; v != "" && v != os.Getenv("XDG_RUNTIME_DIR") {
@@ -106,19 +115,22 @@ func (s *Service) Handle(parent context.Context, c *net.UnixConn, in cacheipc.Re
 	}
 	if req.Mode != askpass.Input {
 		if err := show(view); err != nil {
+			if req.Mode == askpass.Notify {
+				<-ctx.Done()
+				return
+			}
 			finish(2)
 			return
 		}
 		if req.Mode == askpass.Notify {
 			_, _ = action()
+			// A failed notification worker is not signing completion. Keep the
+			// helper alive until OpenSSH ends its notification request.
+			<-ctx.Done()
 			return
 		}
 		a, err := action()
 		if err != nil {
-			return
-		}
-		if req.Mode == askpass.Notify {
-			<-ctx.Done()
 			return
 		}
 		if a.Kind != "submit" {

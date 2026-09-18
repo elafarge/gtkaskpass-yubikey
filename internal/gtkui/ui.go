@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/diamondburned/gotk4/pkg/gdk/v4"
+	"github.com/diamondburned/gotk4/pkg/gdkx11/v4"
 	"github.com/diamondburned/gotk4/pkg/gio/v2"
 	"github.com/diamondburned/gotk4/pkg/glib/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
@@ -50,7 +51,11 @@ func Run(parent context.Context, c net.Conn) error {
 	if !gtk.InitCheck() {
 		return errors.New("cannot connect to a graphical display")
 	}
-	a := gtk.NewApplication("io.github.gtkaskpass_yubikey", gio.ApplicationNonUnique)
+	applicationID := "io.github.gtkaskpass_yubikey"
+	if initial.PassiveTouch {
+		applicationID += ".touch"
+	}
+	a := gtk.NewApplication(applicationID, gio.ApplicationNonUnique)
 	var win *gtk.ApplicationWindow
 	var entry *gtk.PasswordEntry
 	var current dialog.View
@@ -123,7 +128,11 @@ func Run(parent context.Context, c net.Conn) error {
 			spinner := gtk.NewSpinner()
 			spinner.Start()
 			box.Append(spinner)
-			label := gtk.NewLabel("Waiting for SSH. Dismiss hides this notification without cancelling signing.")
+			text := "Waiting for SSH. Dismiss hides this notification without cancelling signing."
+			if v.PassiveTouch {
+				text = "Dismiss hides this notification without cancelling the device operation."
+			}
+			label := gtk.NewLabel(text)
 			label.SetWrap(true)
 			label.SetMaxWidthChars(60)
 			box.Append(label)
@@ -196,7 +205,17 @@ func Run(parent context.Context, c net.Conn) error {
 		}
 		box.Append(buttons)
 		win.SetSensitive(true)
-		win.Present()
+		if v.PassiveTouch {
+			win.Realize()
+			if surface, ok := win.Surface().(*gdkx11.X11Surface); ok {
+				// GTK deprecated its entire X11 backend, without a cross-backend
+				// replacement for this EWMH no-focus-on-map hint.
+				surface.SetUserTime(0) //nolint:staticcheck // Still required for non-activating X11 notifications.
+			}
+			win.SetVisible(true)
+		} else {
+			win.Present()
+		}
 		if entry != nil {
 			entry.GrabFocus()
 		}

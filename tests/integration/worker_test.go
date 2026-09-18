@@ -15,22 +15,22 @@ import (
 	"time"
 )
 
-func TestWorkerDeviceSelectionAndRetry(t *testing.T) {
+func startUIWorker(t *testing.T) (func(any), func() map[string]any, *exec.Cmd) {
+	t.Helper()
 	fds, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM|syscall.SOCK_CLOEXEC, 0)
 	must(t, err)
 	a, b := os.NewFile(uintptr(fds[0]), "test-parent"), os.NewFile(uintptr(fds[1]), "test-worker")
-	defer func() { _ = a.Close(); _ = b.Close() }()
+	t.Cleanup(func() { _ = a.Close(); _ = b.Close() })
 	c, err := net.FileConn(a)
 	must(t, err)
-	defer func() { _ = c.Close() }()
+	t.Cleanup(func() { _ = c.Close() })
 	cmd := exec.Command(filepath.Join(filepath.Dir(askpass), "gtkaskpass-yubikey-ui"))
 	cmd.Env = env(nil)
 	cmd.ExtraFiles = []*os.File{b}
 	var diagnostics lockedBuffer
 	cmd.Stderr = &diagnostics
 	must(t, cmd.Start())
-	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
-	p := &process{} // window helper only; diagnostics stay on the worker
+	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
 	write := func(v any) {
 		t.Helper()
 		data, e := json.Marshal(v)
@@ -57,6 +57,12 @@ func TestWorkerDeviceSelectionAndRetry(t *testing.T) {
 		must(t, json.Unmarshal(data, &r))
 		return r
 	}
+	return write, read, cmd
+}
+
+func TestWorkerDeviceSelectionAndRetry(t *testing.T) {
+	write, read, _ := startUIWorker(t)
+	p := &process{} // window helper only; diagnostics stay on the worker
 	view := map[string]any{"Request": map[string]any{"Mode": "input", "Title": "Device worker test", "Prompt": "Synthetic PIN request"}, "Stage": "choose", "Selected": 1, "Devices": []map[string]string{{"Label": "Token one"}, {"Label": "Token two"}}}
 	write(view)
 	if r := read(); r["Kind"] != "shown" {
@@ -89,4 +95,35 @@ func TestWorkerDeviceSelectionAndRetry(t *testing.T) {
 		t.Fatal("old entry was not cleared", r)
 	}
 	write(map[string]string{"Stage": "close"})
+}
+
+func TestPassiveTouchWindow(t *testing.T) {
+	// Keep a real input window focused while the independent touch popup maps.
+	input := helper(t, nil, "Keep typing here")
+	focus := window(t, input, "SSH input")
+	xd(t, "windowactivate", "--sync", focus)
+	write, read, cmd := startUIWorker(t)
+	write(map[string]any{"Request": map[string]string{"Mode": "notify", "Title": "Passive touch test", "Prompt": "Test security key"}, "PassiveTouch": true})
+	if r := read(); r["Kind"] != "shown" {
+		t.Fatal(r)
+	}
+	p := &process{}
+	w := window(t, p, "Passive touch test")
+	if got := xd(t, "getwindowfocus"); got != focus {
+		t.Fatalf("passive popup stole focus: %s -> %s", focus, got)
+	}
+	xd(t, "windowactivate", "--sync", w)
+	xd(t, "key", "Escape")
+	deadline := time.Now().Add(3 * time.Second)
+	for len(windows("Passive touch test")) > 0 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(windows("Passive touch test")) != 0 {
+		t.Fatal("dismiss did not hide popup")
+	}
+	must(t, cmd.Process.Signal(syscall.Signal(0)))
+	write(map[string]string{"Stage": "close"})
+	xd(t, "windowactivate", "--sync", focus)
+	xd(t, "key", "Escape")
+	wait(t, input, 1, "")
 }
