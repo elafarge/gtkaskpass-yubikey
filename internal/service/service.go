@@ -248,7 +248,7 @@ selectDevice:
 	view.Selected = -1
 	view.ChangeDevice = verify
 	if verify {
-		view.Message = "Device: " + selected.Label + "\nPIN will be verified before returning it to SSH."
+		view.Message = "Device: " + selected.Label
 		if selected.Retries >= 0 {
 			view.Message += "\nPIN attempts remaining: " + strconv.Itoa(selected.Retries)
 		}
