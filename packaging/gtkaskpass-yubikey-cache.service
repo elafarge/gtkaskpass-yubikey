@@ -1,0 +1,11 @@
+[Unit]
+Description=SSH askpass in-memory credential cache
+Requires=gtkaskpass-yubikey-cache.socket
+After=gtkaskpass-yubikey-cache.socket
+
+[Service]
+ExecStart=@bindir@/gtkaskpass-yubikey-cache serve --ttl 1h
+Restart=on-failure
+NoNewPrivileges=true
+LimitCORE=0
+UMask=0077

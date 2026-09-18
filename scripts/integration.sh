@@ -7,4 +7,4 @@ export GDK_BACKEND=x11
 export GSK_RENDERER=cairo
 export GTK_A11Y=none
 unset WAYLAND_DISPLAY
-exec dbus-run-session -- xvfb-run -a go test -count=1 -timeout=180s -tags=integration -v ./tests/integration
+exec dbus-run-session --config-file="$PWD/tests/session.conf" -- xvfb-run -a go test -count=1 -timeout=180s -tags=integration -v ./tests/integration

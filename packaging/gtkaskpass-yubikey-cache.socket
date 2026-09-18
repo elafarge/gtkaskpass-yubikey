@@ -1,0 +1,11 @@
+[Unit]
+Description=SSH askpass credential cache socket
+
+[Socket]
+ListenStream=%t/gtkaskpass-yubikey/cache.sock
+SocketMode=0600
+DirectoryMode=0700
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target
