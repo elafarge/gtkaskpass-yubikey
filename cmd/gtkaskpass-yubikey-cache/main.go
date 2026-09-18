@@ -12,11 +12,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/elafarge/gtkaskpass-yubikey/internal/cache"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/cacheipc"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/lifecycle"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/trace"
 	"golang.org/x/sys/unix"
-	"gtkaskpass-yubikey/internal/cache"
-	"gtkaskpass-yubikey/internal/cacheipc"
-	"gtkaskpass-yubikey/internal/lifecycle"
-	"gtkaskpass-yubikey/internal/trace"
 )
 
 func main() {

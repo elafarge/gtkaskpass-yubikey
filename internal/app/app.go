@@ -8,11 +8,11 @@ import (
 	"os"
 	"time"
 
-	"gtkaskpass-yubikey/internal/askpass"
-	"gtkaskpass-yubikey/internal/cache"
-	"gtkaskpass-yubikey/internal/cacheipc"
-	"gtkaskpass-yubikey/internal/lifecycle"
-	"gtkaskpass-yubikey/internal/trace"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/askpass"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/cache"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/cacheipc"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/lifecycle"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/trace"
 )
 
 type Result struct {
@@ -34,7 +34,7 @@ type App struct {
 func (a App) Run(ctx context.Context, args []string) (code int) {
 	log, err := trace.New(a.Getenv("GTKASKPASS_TRACE"), a.Err)
 	if err != nil {
-		fmt.Fprintln(a.Err, err)
+		a.diagnostic(err)
 		return 2
 	}
 	defer func() { log.Event("exit", "status", code) }()
@@ -42,7 +42,7 @@ func (a App) Run(ctx context.Context, args []string) (code int) {
 	log.Event("input", "argv", fmt.Sprintf("%q", args), "hint", hint, "cache", a.Getenv("GTKASKPASS_CACHE"), "askpass_require", a.Getenv("SSH_ASKPASS_REQUIRE"))
 	req, err := askpass.Parse(args, hint)
 	if err != nil {
-		fmt.Fprintln(a.Err, err)
+		a.diagnostic(err)
 		return 2
 	}
 	log.Event("classified", "mode", req.Mode, "title", req.Title)
@@ -70,7 +70,7 @@ func (a App) Run(ctx context.Context, args []string) (code int) {
 			key = id.Key
 			res, err := a.CacheCall(ctx, cacheipc.Request{Op: "begin", Key: key})
 			if err != nil {
-				fmt.Fprintln(a.Err, "gtkaskpass-yubikey: cache unavailable; using input dialog")
+				a.diagnostic("gtkaskpass-yubikey: cache unavailable; using input dialog")
 				log.Event("cache-fallback", "error", err.Error())
 			} else {
 				log.Event("cache", "path", key.Path, "kind", key.Kind, "reason", res.Reason, "token", res.Token)
@@ -94,7 +94,7 @@ func (a App) Run(ctx context.Context, args []string) (code int) {
 	}
 	r, err := a.UI.Show(ctx, req, ttl, log)
 	if err != nil {
-		fmt.Fprintln(a.Err, "gtkaskpass-yubikey:", err)
+		a.diagnostic("gtkaskpass-yubikey:", err)
 		return 2
 	}
 	if req.Mode == askpass.Notify {
@@ -119,7 +119,7 @@ func (a App) Run(ctx context.Context, args []string) (code int) {
 			clear(secret)
 		}
 		if err != nil {
-			fmt.Fprintln(a.Err, "gtkaskpass-yubikey: response supplied but cache update failed")
+			a.diagnostic("gtkaskpass-yubikey: response supplied but cache update failed")
 		}
 		log.Event("cache-update", "reason", res.Reason, "failed", err != nil)
 	}
@@ -131,15 +131,20 @@ func (a App) respond(ctx context.Context, req askpass.Request, value string, log
 		return 1
 	}
 	if err := askpass.Validate(value); err != nil {
-		fmt.Fprintln(a.Err, err)
+		a.diagnostic(err)
 		return 2
 	}
 	log.Response(value, req.Mode == askpass.Input)
 	n, err := askpass.WriteResponse(a.Out, value)
 	log.Event("stdout-write", "written", n, "expected", len(value)+1, "success", err == nil)
 	if err != nil {
-		fmt.Fprintln(a.Err, "gtkaskpass-yubikey: response write failed")
+		a.diagnostic("gtkaskpass-yubikey: response write failed")
 		return 2
 	}
 	return 0
+}
+
+func (a App) diagnostic(args ...any) {
+	// stderr is best-effort; a broken diagnostic stream must not break SSH.
+	_, _ = fmt.Fprintln(a.Err, args...)
 }

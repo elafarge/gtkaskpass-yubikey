@@ -10,9 +10,9 @@ import (
 	"github.com/diamondburned/gotk4/pkg/gio/v2"
 	"github.com/diamondburned/gotk4/pkg/glib/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
-	"gtkaskpass-yubikey/internal/app"
-	"gtkaskpass-yubikey/internal/askpass"
-	"gtkaskpass-yubikey/internal/trace"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/app"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/askpass"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/trace"
 )
 
 type UI struct{}

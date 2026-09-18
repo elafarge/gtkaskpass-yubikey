@@ -16,14 +16,18 @@ import (
 	"sync"
 	"time"
 
+	"github.com/elafarge/gtkaskpass-yubikey/internal/cache"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/lifecycle"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/trace"
 	"golang.org/x/sys/unix"
-	"gtkaskpass-yubikey/internal/cache"
-	"gtkaskpass-yubikey/internal/lifecycle"
-	"gtkaskpass-yubikey/internal/trace"
 )
 
 const maxFrame = 16 * 1024
 const Timeout = 2 * time.Second
+
+// Transport cleanup cannot recover a failed connection or change a response
+// already supplied to SSH. In particular, closing an already closed socket is OK.
+func closeQuietly(c io.Closer) { _ = c.Close() }
 
 type Request struct {
 	Version int       `json:"version"`
@@ -156,7 +160,7 @@ func Call(ctx context.Context, req Request) (Response, error) {
 	if err != nil {
 		return Response{}, err
 	}
-	defer conn.Close()
+	defer closeQuietly(conn)
 	c := conn.(*net.UnixConn)
 	if _, err := peer(c); err != nil {
 		return Response{}, err
@@ -168,7 +172,7 @@ func Call(ctx context.Context, req Request) (Response, error) {
 	if err := c.SetDeadline(deadline); err != nil {
 		return Response{}, err
 	}
-	stop := context.AfterFunc(ctx, func() { c.Close() })
+	stop := context.AfterFunc(ctx, func() { closeQuietly(c) })
 	defer stop()
 	req.Version = 1
 	if err := writeFrame(c, req); err != nil {
@@ -197,14 +201,14 @@ func Listen() (*net.UnixListener, error) {
 			return nil, errors.New("expected exactly one activation socket")
 		}
 		f := os.NewFile(3, "activation-socket")
-		defer f.Close()
+		defer closeQuietly(f)
 		l, err := net.FileListener(f)
 		if err != nil {
 			return nil, err
 		}
 		u, ok := l.(*net.UnixListener)
 		if !ok || l.Addr().String() != p {
-			l.Close()
+			closeQuietly(l)
 			return nil, errors.New("unexpected activation socket")
 		}
 		u.SetUnlinkOnClose(false)
@@ -215,7 +219,7 @@ func Listen() (*net.UnixListener, error) {
 		return nil, err
 	}
 	if err := os.Chmod(p, 0600); err != nil {
-		l.Close()
+		closeQuietly(l)
 		return nil, err
 	}
 	return l, nil
@@ -246,8 +250,10 @@ func alive(id string) bool {
 }
 
 func handle(c *net.UnixConn, s *cache.Store, log *trace.Logger) {
-	defer c.Close()
-	c.SetDeadline(time.Now().Add(Timeout))
+	defer closeQuietly(c)
+	if err := c.SetDeadline(time.Now().Add(Timeout)); err != nil {
+		return
+	}
 	cred, err := peer(c)
 	if err != nil {
 		return
@@ -259,7 +265,12 @@ func handle(c *net.UnixConn, s *cache.Store, log *trace.Logger) {
 	}
 	defer clear(req.Secret)
 	resp := Response{Version: 1}
-	defer func() { defer clear(resp.Secret); writeFrame(c, resp) }()
+	defer func() {
+		defer clear(resp.Secret)
+		if err := writeFrame(c, resp); err != nil {
+			log.Event("ipc-write-failed")
+		}
+	}()
 	if req.Version != 1 {
 		resp.Error = "version"
 		return
@@ -311,9 +322,9 @@ func handle(c *net.UnixConn, s *cache.Store, log *trace.Logger) {
 
 func Serve(ctx context.Context, l *net.UnixListener, s *cache.Store, log *trace.Logger) error {
 	defer s.Forget(nil)
-	stop := context.AfterFunc(ctx, func() { l.Close() })
+	stop := context.AfterFunc(ctx, func() { closeQuietly(l) })
 	defer stop()
-	defer l.Close()
+	defer closeQuietly(l)
 	var wg sync.WaitGroup
 	defer wg.Wait()
 	sem := make(chan struct{}, 64)
@@ -347,7 +358,7 @@ func Serve(ctx context.Context, l *net.UnixListener, s *cache.Store, log *trace.
 			wg.Add(1)
 			go func() { defer wg.Done(); defer func() { <-sem }(); handle(c, s, log) }()
 		default:
-			c.Close()
+			closeQuietly(c)
 		}
 	}
 }

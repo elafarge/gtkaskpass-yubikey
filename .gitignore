@@ -2,3 +2,5 @@
 /result
 /result-*
 /coverage.out
+/dist/
+__pycache__/

@@ -1,4 +1,4 @@
-module gtkaskpass-yubikey
+module github.com/elafarge/gtkaskpass-yubikey
 
 go 1.24.0
 

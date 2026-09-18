@@ -51,7 +51,7 @@ func (p Process) Alive() bool {
 func WaitParent(ctx context.Context, p Process) {
 	fd, err := unix.PidfdOpen(p.PID, 0)
 	if err == nil {
-		defer unix.Close(fd)
+		defer func() { _ = unix.Close(fd) }() // best-effort descriptor cleanup
 	}
 	for ctx.Err() == nil && p.Alive() {
 		if err == nil {

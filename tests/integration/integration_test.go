@@ -40,8 +40,8 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	code := m.Run()
-	wm.Process.Kill()
-	wm.Wait()
+	_ = wm.Process.Kill() // best-effort cleanup; the window manager may have exited
+	_ = wm.Wait()
 	os.Exit(code)
 }
 
@@ -118,7 +118,7 @@ func start(t *testing.T, overrides map[string]string, program string, args ...st
 		t.Fatal(err)
 	}
 	go func() { p.done <- p.cmd.Wait() }()
-	t.Cleanup(func() { syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL) })
+	t.Cleanup(func() { _ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL) })
 	return p
 }
 
@@ -243,13 +243,13 @@ func TestNotificationLifecycle(t *testing.T) {
 	if err := p.cmd.Process.Signal(syscall.Signal(0)); err != nil {
 		t.Fatal("dismiss ended process")
 	}
-	p.cmd.Process.Signal(syscall.SIGTERM)
+	must(t, p.cmd.Process.Signal(syscall.SIGTERM))
 	wait(t, p, 0, "")
 	// Parent death must also stop the actual helper, including a hidden notifier.
 	p = helper(t, map[string]string{"SSH_ASKPASS_PROMPT": "none"}, "Confirm user presence for key orphan")
 	w = window(t, p, "Touch your security key")
 	pid, _ := strconv.Atoi(xd(t, "getwindowpid", w))
-	p.cmd.Process.Kill()
+	must(t, p.cmd.Process.Kill())
 	deadline = time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if len(windows("Touch your security key")) == 0 {
@@ -257,7 +257,7 @@ func TestNotificationLifecycle(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	syscall.Kill(pid, syscall.SIGKILL)
+	_ = syscall.Kill(pid, syscall.SIGKILL) // best-effort cleanup before failure
 	t.Fatal("orphan window remained")
 }
 
@@ -268,10 +268,10 @@ func TestErrorsAndSignals(t *testing.T) {
 	wait(t, p, 2, "")
 	p = start(t, nil, askpass, "input")
 	window(t, p, "SSH input")
-	p.cmd.Process.Signal(syscall.SIGTERM)
+	must(t, p.cmd.Process.Signal(syscall.SIGTERM))
 	wait(t, p, 1, "")
 	p = start(t, map[string]string{"SSH_ASKPASS_PROMPT": "none"}, askpass, "notification")
-	p.cmd.Process.Signal(syscall.SIGTERM)
+	must(t, p.cmd.Process.Signal(syscall.SIGTERM))
 	select {
 	case <-p.done:
 	case <-time.After(3 * time.Second):
@@ -306,18 +306,18 @@ func TestBrokenTracePipe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r.Close()
+	must(t, r.Close())
 	p := &process{done: make(chan error, 1)}
 	p.cmd = exec.Command(askpass, "Broken trace pipe")
 	p.cmd.Env = env(map[string]string{"GTKASKPASS_TRACE": "secrets"})
 	p.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	p.cmd.Stdout, p.cmd.Stderr = &p.out, w
 	if err := p.cmd.Start(); err != nil {
-		w.Close()
+		_ = w.Close() // cleanup after failed process startup
 		t.Fatal(err)
 	}
-	w.Close()
-	t.Cleanup(func() { syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL) })
+	must(t, w.Close())
+	t.Cleanup(func() { _ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL) })
 	go func() { p.done <- p.cmd.Wait() }()
 	typeAnswer(t, p, "SSH input", "answer")
 	wait(t, p, 0, "answer\n")
@@ -329,7 +329,11 @@ func cacheEnv(t *testing.T, ttl string) (map[string]string, *process) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(root) })
+	t.Cleanup(func() {
+		if err := os.RemoveAll(root); err != nil {
+			t.Error(err)
+		}
+	})
 	e := map[string]string{"XDG_RUNTIME_DIR": root, "GTKASKPASS_CACHE": "on"}
 	d := start(t, e, daemon, "serve", "--ttl", ttl, "--trace")
 	deadline := time.Now().Add(5 * time.Second)
@@ -346,7 +350,7 @@ func cacheEnv(t *testing.T, ttl string) (map[string]string, *process) {
 func TestCache(t *testing.T) {
 	e, d := cacheEnv(t, "1h")
 	key := filepath.Join(e["XDG_RUNTIME_DIR"], "key")
-	os.WriteFile(key, []byte("fixture"), 0600)
+	must(t, os.WriteFile(key, []byte("fixture"), 0600))
 	prompt := "Enter passphrase for " + key + ": "
 	p := helper(t, e, prompt)
 	typeAnswer(t, p, "SSH passphrase", "cached-answer")
@@ -371,11 +375,11 @@ func TestCache(t *testing.T) {
 	p = helper(t, e, prompt)
 	typeAnswer(t, p, "SSH passphrase", "new-answer")
 	wait(t, p, 0, "new-answer\n")
-	os.WriteFile(key, []byte("changed fixture"), 0600)
+	must(t, os.WriteFile(key, []byte("changed fixture"), 0600))
 	p = helper(t, e, prompt)
 	typeAnswer(t, p, "SSH passphrase", "changed-answer")
 	wait(t, p, 0, "changed-answer\n")
-	d.cmd.Process.Signal(syscall.SIGTERM)
+	must(t, d.cmd.Process.Signal(syscall.SIGTERM))
 	wait(t, d, 0, "")
 	p = helper(t, e, prompt)
 	typeAnswer(t, p, "SSH passphrase", "fallback")
@@ -388,7 +392,7 @@ func TestCache(t *testing.T) {
 func TestCacheExpiry(t *testing.T) {
 	e, _ := cacheEnv(t, "100ms")
 	key := filepath.Join(e["XDG_RUNTIME_DIR"], "key")
-	os.WriteFile(key, []byte("fixture"), 0600)
+	must(t, os.WriteFile(key, []byte("fixture"), 0600))
 	prompt := "Enter passphrase for " + key + ": "
 	p := helper(t, e, prompt)
 	typeAnswer(t, p, "SSH passphrase", "short-lived")
@@ -452,5 +456,12 @@ func TestOpenSSH(t *testing.T) {
 	xd(t, "windowactivate", "--sync", w)
 	xd(t, "key", "Escape")
 	wait(t, p, 1, "")
-	agent.cmd.Process.Signal(syscall.SIGTERM)
+	must(t, agent.cmd.Process.Signal(syscall.SIGTERM))
+}
+
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
 }

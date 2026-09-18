@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"gtkaskpass-yubikey/internal/askpass"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/askpass"
 )
 
 const (

@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"gtkaskpass-yubikey/internal/askpass"
-	"gtkaskpass-yubikey/internal/cacheipc"
-	"gtkaskpass-yubikey/internal/trace"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/askpass"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/cacheipc"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/trace"
 )
 
 type fakeUI struct {

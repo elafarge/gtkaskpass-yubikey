@@ -18,7 +18,7 @@ func TestParentLifetime(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	defer cmd.Process.Kill()
+	defer func() { _ = cmd.Process.Kill() }() // cleanup if an assertion fails
 	p, err := ReadProcess(cmd.Process.Pid)
 	if err != nil || !p.Alive() {
 		t.Fatal(p, err)
@@ -32,8 +32,12 @@ func TestParentLifetime(t *testing.T) {
 	defer cancel()
 	done := make(chan struct{})
 	go func() { WaitParent(ctx, p); close(done) }()
-	cmd.Process.Kill()
-	cmd.Wait()
+	if err := cmd.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Wait(); err == nil {
+		t.Fatal("expected killed child to exit unsuccessfully")
+	}
 	select {
 	case <-done:
 	case <-ctx.Done():

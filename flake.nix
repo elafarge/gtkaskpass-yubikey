@@ -64,6 +64,8 @@
             nativeBuildInputs = with pkgs; [
               go pkg-config gobject-introspection wrapGAppsHook4
               dbus xvfb-run xdotool openbox openssh python3 weston
+              golangci-lint actionlint shellcheck
+              jq zstd
             ];
             buildInputs = with pkgs; [ gtk4 ];
             shellHook = ''

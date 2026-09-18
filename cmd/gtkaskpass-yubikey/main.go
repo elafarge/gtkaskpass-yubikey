@@ -8,10 +8,10 @@ import (
 	"runtime"
 	"syscall"
 
-	"gtkaskpass-yubikey/internal/app"
-	"gtkaskpass-yubikey/internal/cacheipc"
-	"gtkaskpass-yubikey/internal/gtkui"
-	"gtkaskpass-yubikey/internal/trace"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/app"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/cacheipc"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/gtkui"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/trace"
 )
 
 func init() { runtime.LockOSThread() }

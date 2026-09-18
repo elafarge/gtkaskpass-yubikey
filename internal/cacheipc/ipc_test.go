@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"gtkaskpass-yubikey/internal/cache"
-	"gtkaskpass-yubikey/internal/lifecycle"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/cache"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/lifecycle"
 )
 
 func TestFrames(t *testing.T) {
@@ -36,7 +36,9 @@ func TestFrames(t *testing.T) {
 
 func TestServerLifecycle(t *testing.T) {
 	root := t.TempDir()
-	os.Chmod(root, 0700)
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("XDG_RUNTIME_DIR", root)
 	l, err := Listen()
 	if err != nil {
@@ -77,13 +79,15 @@ func TestServerLifecycle(t *testing.T) {
 	if _, err := Call(ctx, Request{Op: "forget-all"}); err == nil {
 		t.Fatal("insecure socket accepted")
 	}
-	os.Chmod(path, 0600)
+	if err := os.Chmod(path, 0600); err != nil {
+		t.Fatal(err)
+	}
 	// A stalled client must not hold up daemon termination beyond the deadline.
 	c, err := net.Dial("unix", path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer closeQuietly(c)
 	cancel()
 	select {
 	case err := <-done:
@@ -98,11 +102,15 @@ func TestServerLifecycle(t *testing.T) {
 func TestPrivateRuntimeDirectory(t *testing.T) {
 	r := t.TempDir()
 	t.Setenv("XDG_RUNTIME_DIR", r)
-	os.Chmod(r, 0755)
+	if err := os.Chmod(r, 0755); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := SocketPath(true); err == nil {
 		t.Fatal("public runtime directory accepted")
 	}
-	os.Chmod(r, 0700)
+	if err := os.Chmod(r, 0700); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Symlink(t.TempDir(), filepath.Join(r, "gtkaskpass-yubikey")); err != nil {
 		t.Fatal(err)
 	}
