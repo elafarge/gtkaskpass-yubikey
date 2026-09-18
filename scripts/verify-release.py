@@ -16,7 +16,7 @@ def verify(tag, revision, release, directory):
     assets = {asset["name"]: asset for asset in release["assets"]}
     expected = set()
     for system in ("x86_64-linux", "aarch64-linux"):
-        base = f"gtkaskpass-yubikey-{tag[1:]}-{system}"
+        base = f"ssh-askpass-fido-{tag[1:]}-{system}"
         names = [base + suffix for suffix in (".nar.zst", ".json", ".sha256")]
         expected.update(names)
         for name in names:
@@ -37,7 +37,7 @@ def verify(tag, revision, release, directory):
         metadata = json.loads(metadata_file.read_text())
         assert metadata["format"] == 1 and metadata["version"] == tag[1:]
         assert metadata["system"] == system and metadata["revision"] == revision
-        assert re.fullmatch(r"/nix/store/[a-z0-9]{32}-gtkaskpass-yubikey-" + re.escape(tag[1:]), metadata["storePath"])
+        assert re.fullmatch(r"/nix/store/[a-z0-9]{32}-ssh-askpass-fido-" + re.escape(tag[1:]), metadata["storePath"])
     assert set(assets) == expected, "unexpected or missing release assets"
 
 

@@ -16,9 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/elafarge/gtkaskpass-yubikey/internal/cache"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/lifecycle"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/trace"
+	"github.com/elafarge/ssh-askpass-fido/internal/cache"
+	"github.com/elafarge/ssh-askpass-fido/internal/lifecycle"
+	"github.com/elafarge/ssh-askpass-fido/internal/trace"
 	"golang.org/x/sys/unix"
 )
 
@@ -108,7 +108,7 @@ func SocketPath(create bool) (string, error) {
 	if err := ownedDir(root); err != nil {
 		return "", err
 	}
-	dir := filepath.Join(root, "gtkaskpass-yubikey")
+	dir := filepath.Join(root, "ssh-askpass-fido")
 	if create {
 		if err := os.Mkdir(dir, 0700); err != nil && !errors.Is(err, os.ErrExist) {
 			return "", err

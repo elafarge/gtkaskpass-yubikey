@@ -11,7 +11,7 @@ import (
 	"runtime"
 	"syscall"
 
-	"github.com/elafarge/gtkaskpass-yubikey/internal/gtkui"
+	"github.com/elafarge/ssh-askpass-fido/internal/gtkui"
 )
 
 func init() { runtime.LockOSThread() }
@@ -26,7 +26,7 @@ func main() {
 		err = gtkui.Run(context.Background(), c)
 	}
 	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "gtkaskpass UI:", err)
+		_, _ = fmt.Fprintln(os.Stderr, "ssh-askpass-fido UI:", err)
 		os.Exit(2)
 	}
 }

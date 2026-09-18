@@ -30,7 +30,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/elafarge/gtkaskpass-yubikey/internal/device"
+	"github.com/elafarge/ssh-askpass-fido/internal/device"
 )
 
 type Backend struct{}

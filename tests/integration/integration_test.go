@@ -21,11 +21,11 @@ var askpass, daemon string
 
 func TestMain(m *testing.M) {
 	// Subprocess caller harnesses inherit their parent's test environment.
-	if os.Getenv("GTKASKPASS_CALLER") != "" {
+	if os.Getenv("SSH_ASKPASS_FIDO_CALLER") != "" {
 		os.Exit(m.Run())
 	}
 	askpass, daemon = os.Getenv("ASKPASS_BIN"), os.Getenv("CACHE_BIN")
-	if askpass == "" || daemon == "" || os.Getenv("GTKASKPASS_TEST_DISPLAY") != "1" {
+	if askpass == "" || daemon == "" || os.Getenv("SSH_ASKPASS_FIDO_TEST_DISPLAY") != "1" {
 		fmt.Fprintln(os.Stderr, "run via scripts/integration.sh with built binaries")
 		os.Exit(2)
 	}
@@ -56,7 +56,7 @@ func TestMain(m *testing.M) {
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if _, err := os.Stat(filepath.Join(root, "gtkaskpass-yubikey", "cache.sock")); err == nil {
+		if _, err := os.Stat(filepath.Join(root, "ssh-askpass-fido", "cache.sock")); err == nil {
 			break
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -73,7 +73,7 @@ func TestMain(m *testing.M) {
 // TestCallerProcess is a launcher, not an alternate UI or credential source.
 // It gives each test request a genuine distinct caller identity like ssh does.
 func TestCallerProcess(t *testing.T) {
-	if os.Getenv("GTKASKPASS_CALLER") == "" {
+	if os.Getenv("SSH_ASKPASS_FIDO_CALLER") == "" {
 		return
 	}
 	args := os.Args
@@ -119,9 +119,9 @@ func env(overrides map[string]string) []string {
 		m[k] = v
 	}
 	delete(m, "SSH_ASKPASS_PROMPT")
-	delete(m, "GTKASKPASS_CALLER")
-	m["GTKASKPASS_CACHE"] = "off"
-	m["GTKASKPASS_TRACE"] = "metadata"
+	delete(m, "SSH_ASKPASS_FIDO_CALLER")
+	m["SSH_ASKPASS_FIDO_CACHE"] = "off"
+	m["SSH_ASKPASS_FIDO_TRACE"] = "metadata"
 	// Never inherit the user's service configuration in disposable tests.
 	m["XDG_CONFIG_HOME"] = filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "test-config")
 	for k, v := range overrides {
@@ -154,7 +154,7 @@ func helper(t *testing.T, e map[string]string, prompt string) *process {
 	if e == nil {
 		e = map[string]string{}
 	}
-	e["GTKASKPASS_CALLER"] = "1"
+	e["SSH_ASKPASS_FIDO_CALLER"] = "1"
 	return start(t, e, os.Args[0], "-test.run=^TestCallerProcess$", "--", askpass, prompt)
 }
 
@@ -221,7 +221,7 @@ func typeAnswer(t *testing.T, p *process, title, value string) {
 func TestInputContract(t *testing.T) {
 	for _, mode := range []string{"off", "metadata", "secrets"} {
 		t.Run(mode, func(t *testing.T) {
-			p := helper(t, map[string]string{"GTKASKPASS_TRACE": mode}, "<b>literal prompt</b>\nsecond line")
+			p := helper(t, map[string]string{"SSH_ASKPASS_FIDO_TRACE": mode}, "<b>literal prompt</b>\nsecond line")
 			typeAnswer(t, p, "SSH input", " synthetic value ")
 			wait(t, p, 0, " synthetic value \n")
 			if strings.Contains(p.err.String(), "synthetic value") != (mode == "secrets") {
@@ -336,7 +336,7 @@ func TestBrokenTracePipe(t *testing.T) {
 	must(t, r.Close())
 	p := &process{done: make(chan error, 1)}
 	p.cmd = exec.Command(askpass, "Broken trace pipe")
-	p.cmd.Env = env(map[string]string{"GTKASKPASS_TRACE": "secrets"})
+	p.cmd.Env = env(map[string]string{"SSH_ASKPASS_FIDO_TRACE": "secrets"})
 	p.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	p.cmd.Stdout, p.cmd.Stderr = &p.out, w
 	if err := p.cmd.Start(); err != nil {
@@ -361,11 +361,11 @@ func cacheEnv(t *testing.T, ttl string) (map[string]string, *process) {
 			t.Error(err)
 		}
 	})
-	e := map[string]string{"XDG_RUNTIME_DIR": root, "GTKASKPASS_CACHE": "on"}
+	e := map[string]string{"XDG_RUNTIME_DIR": root, "SSH_ASKPASS_FIDO_CACHE": "on"}
 	d := start(t, e, daemon, "serve", "--ttl", ttl, "--trace", "--pin-verification", "off", "--touch-monitor=false")
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if _, err := os.Stat(filepath.Join(root, "gtkaskpass-yubikey", "cache.sock")); err == nil {
+		if _, err := os.Stat(filepath.Join(root, "ssh-askpass-fido", "cache.sock")); err == nil {
 			return e, d
 		}
 		time.Sleep(20 * time.Millisecond)

@@ -8,11 +8,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/elafarge/gtkaskpass-yubikey/internal/askpass"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/cacheipc"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/lifecycle"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/service"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/trace"
+	"github.com/elafarge/ssh-askpass-fido/internal/askpass"
+	"github.com/elafarge/ssh-askpass-fido/internal/cacheipc"
+	"github.com/elafarge/ssh-askpass-fido/internal/lifecycle"
+	"github.com/elafarge/ssh-askpass-fido/internal/service"
+	"github.com/elafarge/ssh-askpass-fido/internal/trace"
 )
 
 type App struct {
@@ -21,7 +21,7 @@ type App struct {
 }
 
 func (a App) Run(parent context.Context, args []string) (code int) {
-	log, err := trace.New(a.Getenv("GTKASKPASS_TRACE"), a.Err)
+	log, err := trace.New(a.Getenv("SSH_ASKPASS_FIDO_TRACE"), a.Err)
 	if err != nil {
 		_, _ = fmt.Fprintln(a.Err, err)
 		return 2
@@ -37,7 +37,7 @@ func (a App) Run(parent context.Context, args []string) (code int) {
 	}
 	c, err := cacheipc.Dial(ctx)
 	if err != nil {
-		_, _ = fmt.Fprintln(a.Err, "gtkaskpass: request service unavailable; start gtkaskpass-yubikey-cache.service in your graphical session")
+		_, _ = fmt.Fprintln(a.Err, "ssh-askpass-fido: request service unavailable; start ssh-askpass-fido.service in your graphical session")
 		return 2
 	}
 	defer func() { _ = c.Close() }()
@@ -50,7 +50,7 @@ func (a App) Run(parent context.Context, args []string) (code int) {
 	if err := c.SetDeadline(time.Now().Add(cacheipc.Timeout)); err != nil {
 		return 2
 	}
-	in := cacheipc.Request{Version: 2, Op: "ask", Args: args, Hint: a.Getenv("SSH_ASKPASS_PROMPT"), Env: env, NoCache: a.Getenv("GTKASKPASS_CACHE") == "off", Trace: a.Getenv("GTKASKPASS_TRACE") != "" && a.Getenv("GTKASKPASS_TRACE") != "off"}
+	in := cacheipc.Request{Version: 2, Op: "ask", Args: args, Hint: a.Getenv("SSH_ASKPASS_PROMPT"), Env: env, NoCache: a.Getenv("SSH_ASKPASS_FIDO_CACHE") == "off", Trace: a.Getenv("SSH_ASKPASS_FIDO_TRACE") != "" && a.Getenv("SSH_ASKPASS_FIDO_TRACE") != "off"}
 	log.Event("input", "argv", fmt.Sprintf("%q", args), "hint", in.Hint)
 	if cacheipc.WriteFrame(c, in) != nil {
 		return 2
@@ -65,7 +65,7 @@ func (a App) Run(parent context.Context, args []string) (code int) {
 				}
 				return 1
 			}
-			_, _ = fmt.Fprintln(a.Err, "gtkaskpass: request service disconnected")
+			_, _ = fmt.Fprintln(a.Err, "ssh-askpass-fido: request service disconnected")
 			return 2
 		}
 		if r.Version != 2 {

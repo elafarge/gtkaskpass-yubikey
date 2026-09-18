@@ -8,8 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/elafarge/gtkaskpass-yubikey/internal/app"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/trace"
+	"github.com/elafarge/ssh-askpass-fido/internal/app"
+	"github.com/elafarge/ssh-askpass-fido/internal/trace"
 )
 
 func main() {
@@ -27,7 +27,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
-	log, _ := trace.New(os.Getenv("GTKASKPASS_TRACE"), os.Stderr)
+	log, _ := trace.New(os.Getenv("SSH_ASKPASS_FIDO_TRACE"), os.Stderr)
 	go func() {
 		select {
 		case sig := <-signals:

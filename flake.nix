@@ -8,13 +8,13 @@
     in {
       packages = forAllSystems (system:
         let pkgs = nixpkgs.legacyPackages.${system}; in rec {
-          gtkaskpass-yubikey = pkgs.callPackage ./nix/package.nix { };
-          default = gtkaskpass-yubikey;
+          ssh-askpass-fido = pkgs.callPackage ./nix/package.nix { };
+          default = ssh-askpass-fido;
         });
       apps = forAllSystems (system: {
         default = {
           type = "app";
-          program = "${self.packages.${system}.default}/bin/gtkaskpass-yubikey";
+          program = "${self.packages.${system}.default}/bin/ssh-askpass-fido";
           meta.description = "GTK4 SSH askpass";
         };
       });
@@ -25,7 +25,7 @@
           package = self.packages.${system}.default;
         in {
           inherit package;
-          tooling = pkgs.runCommand "gtkaskpass-tooling-checks" {
+          tooling = pkgs.runCommand "ssh-askpass-fido-tooling-checks" {
             nativeBuildInputs = with pkgs; [ actionlint shellcheck python3 ];
           } ''
             cp -r ${pkgs.lib.fileset.toSource {
@@ -42,7 +42,7 @@
             python3 -B -m unittest discover -s tests/release
             touch "$out"
           '';
-          integration = pkgs.runCommand "gtkaskpass-integration" {
+          integration = pkgs.runCommand "ssh-askpass-fido-integration" {
             nativeBuildInputs = with pkgs; [ go dbus xvfb-run xdotool openbox openssh stdenv.cc pkg-config (python3.withPackages (p: [ p.paramiko ])) ];
             buildInputs = [ pkgs.openssl ];
           } ''
@@ -58,19 +58,19 @@
             export HOME="$TMPDIR/home"
             mkdir -p "$HOME"
             export GOCACHE="$TMPDIR/go-cache" GOPROXY=off
-            export ASKPASS_BIN=${package}/bin/gtkaskpass-yubikey
-            export CACHE_BIN=${package}/bin/gtkaskpass-yubikey-cache
+            export ASKPASS_BIN=${package}/bin/ssh-askpass-fido
+            export CACHE_BIN=${package}/bin/ssh-askpass-fido-service
             export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; }}
             bash scripts/integration.sh
             touch "$out"
           '';
-          wayland = pkgs.runCommand "gtkaskpass-wayland" {
+          wayland = pkgs.runCommand "ssh-askpass-fido-wayland" {
             nativeBuildInputs = with pkgs; [ python3 dbus weston ];
           } ''
             export HOME="$TMPDIR/home"
             mkdir -p "$HOME"
-            export ASKPASS_BIN=${package}/bin/gtkaskpass-yubikey
-            export CACHE_BIN=${package}/bin/gtkaskpass-yubikey-cache
+            export ASKPASS_BIN=${package}/bin/ssh-askpass-fido
+            export CACHE_BIN=${package}/bin/ssh-askpass-fido-service
             export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; }}
             dbus-run-session --config-file=${./tests/session.conf} -- python ${./tests/wayland.py}
             touch "$out"

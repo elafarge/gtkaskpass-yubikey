@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/elafarge/gtkaskpass-yubikey/internal/cache"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/cacheipc"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/device"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/dialog"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/preferences"
+	"github.com/elafarge/ssh-askpass-fido/internal/cache"
+	"github.com/elafarge/ssh-askpass-fido/internal/cacheipc"
+	"github.com/elafarge/ssh-askpass-fido/internal/device"
+	"github.com/elafarge/ssh-askpass-fido/internal/dialog"
+	"github.com/elafarge/ssh-askpass-fido/internal/preferences"
 )
 
 type fakeDevices struct {

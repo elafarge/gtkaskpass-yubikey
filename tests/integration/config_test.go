@@ -18,16 +18,16 @@ func TestServiceConfigFileAndOverrides(t *testing.T) {
 			t.Error(e)
 		}
 	})
-	dir := filepath.Join(root, "config", "gtkaskpass-yubikey")
+	dir := filepath.Join(root, "config", "ssh-askpass-fido")
 	must(t, os.MkdirAll(dir, 0700))
 	p := filepath.Join(dir, "config.yaml")
 	must(t, os.WriteFile(p, []byte("cacheTTL: 0\npinVerification: off\ntouchNotifications: false\ntrace: false\n"), 0600))
-	e := map[string]string{"XDG_RUNTIME_DIR": root, "XDG_CONFIG_HOME": filepath.Join(root, "config"), "GTKASKPASS_CACHE": "on"}
+	e := map[string]string{"XDG_RUNTIME_DIR": root, "XDG_CONFIG_HOME": filepath.Join(root, "config"), "SSH_ASKPASS_FIDO_CACHE": "on"}
 	// The file disables cache, but an explicit CLI flag overrides just TTL.
 	d := start(t, e, daemon, "serve", "--ttl=1h")
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if _, err := os.Stat(filepath.Join(root, "gtkaskpass-yubikey", "cache.sock")); err == nil {
+		if _, err := os.Stat(filepath.Join(root, "ssh-askpass-fido", "cache.sock")); err == nil {
 			break
 		}
 		time.Sleep(20 * time.Millisecond)

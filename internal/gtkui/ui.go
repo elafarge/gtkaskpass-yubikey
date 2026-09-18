@@ -12,9 +12,9 @@ import (
 	"github.com/diamondburned/gotk4/pkg/gio/v2"
 	"github.com/diamondburned/gotk4/pkg/glib/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/askpass"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/cacheipc"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/dialog"
+	"github.com/elafarge/ssh-askpass-fido/internal/askpass"
+	"github.com/elafarge/ssh-askpass-fido/internal/cacheipc"
+	"github.com/elafarge/ssh-askpass-fido/internal/dialog"
 )
 
 // Run renders service-owned views. This worker has no cache or device access.
@@ -51,7 +51,7 @@ func Run(parent context.Context, c net.Conn) error {
 	if !gtk.InitCheck() {
 		return errors.New("cannot connect to a graphical display")
 	}
-	applicationID := "io.github.gtkaskpass_yubikey"
+	applicationID := "io.github.ssh_askpass_fido"
 	if initial.PassiveTouch {
 		applicationID += ".touch"
 	}
@@ -253,7 +253,7 @@ func Run(parent context.Context, c net.Conn) error {
 		return true
 	})
 	defer glib.SourceRemove(timer)
-	code := a.Run([]string{"gtkaskpass-yubikey-ui"})
+	code := a.Run([]string{"ssh-askpass-fido-ui"})
 	if entry != nil {
 		entry.SetText("")
 	}

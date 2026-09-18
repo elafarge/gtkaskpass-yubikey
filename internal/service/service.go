@@ -12,12 +12,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/elafarge/gtkaskpass-yubikey/internal/askpass"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/cache"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/cacheipc"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/device"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/dialog"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/preferences"
+	"github.com/elafarge/ssh-askpass-fido/internal/askpass"
+	"github.com/elafarge/ssh-askpass-fido/internal/cache"
+	"github.com/elafarge/ssh-askpass-fido/internal/cacheipc"
+	"github.com/elafarge/ssh-askpass-fido/internal/device"
+	"github.com/elafarge/ssh-askpass-fido/internal/dialog"
+	"github.com/elafarge/ssh-askpass-fido/internal/preferences"
 )
 
 type Service struct {
@@ -431,7 +431,7 @@ selectDevice:
 	}
 	if savePreference && s.Preferences != nil {
 		if e := s.Preferences.Save(k.Fingerprint, selected.StableID); e != nil {
-			_, _ = fmt.Fprintln(os.Stderr, "gtkaskpass: could not save device preference")
+			_, _ = fmt.Fprintln(os.Stderr, "ssh-askpass-fido: could not save device preference")
 		}
 	}
 	_ = send(cacheipc.Response{Event: "done"})

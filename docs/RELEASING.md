@@ -77,12 +77,12 @@ do not match `nix/package.nix`. After every check passes, it creates a draft,
 builds a runtime closure on each native architecture, and uploads:
 
 ```text
-gtkaskpass-yubikey-VERSION-x86_64-linux.nar.zst
-gtkaskpass-yubikey-VERSION-x86_64-linux.json
-gtkaskpass-yubikey-VERSION-x86_64-linux.sha256
-gtkaskpass-yubikey-VERSION-aarch64-linux.nar.zst
-gtkaskpass-yubikey-VERSION-aarch64-linux.json
-gtkaskpass-yubikey-VERSION-aarch64-linux.sha256
+ssh-askpass-fido-VERSION-x86_64-linux.nar.zst
+ssh-askpass-fido-VERSION-x86_64-linux.json
+ssh-askpass-fido-VERSION-x86_64-linux.sha256
+ssh-askpass-fido-VERSION-aarch64-linux.nar.zst
+ssh-askpass-fido-VERSION-aarch64-linux.json
+ssh-askpass-fido-VERSION-aarch64-linux.sha256
 ```
 
 The NAR stream contains the package and its runtime dependencies, including GTK.
@@ -107,9 +107,9 @@ versions.
 Download the three assets for your architecture from the GitHub release, then:
 
 ```sh
-sha256sum --check gtkaskpass-yubikey-0.1.0-x86_64-linux.sha256
-zstd -dc gtkaskpass-yubikey-0.1.0-x86_64-linux.nar.zst | sudo nix-store --import
-package=$(jq -r .storePath gtkaskpass-yubikey-0.1.0-x86_64-linux.json)
+sha256sum --check ssh-askpass-fido-0.4.0-x86_64-linux.sha256
+zstd -dc ssh-askpass-fido-0.4.0-x86_64-linux.nar.zst | sudo nix-store --import
+package=$(jq -r .storePath ssh-askpass-fido-0.4.0-x86_64-linux.json)
 nix profile add "$package"
 ```
 

@@ -4,9 +4,9 @@ PartOf=graphical-session.target
 After=graphical-session-pre.target
 
 [Service]
-ExecStart=@bindir@/gtkaskpass-yubikey-cache serve
+ExecStart=@bindir@/ssh-askpass-fido-service serve
 Restart=on-failure
-RuntimeDirectory=gtkaskpass-yubikey
+RuntimeDirectory=ssh-askpass-fido
 RuntimeDirectoryMode=0700
 NoNewPrivileges=true
 LimitCORE=0

@@ -41,7 +41,7 @@ func TestFormatsAndOverrides(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
-			p := file(t, dir, "gtkaskpass-yubikey/"+name, text)
+			p := file(t, dir, "ssh-askpass-fido/"+name, text)
 			cfg, used, e := Load("", dir, flagSet(t))
 			if e != nil || used != p {
 				t.Fatal(cfg, used, e)
@@ -65,8 +65,8 @@ func TestDefaultsAndExplicitSelection(t *testing.T) {
 	if e != nil || used != "" || cfg != (Settings{CacheTTL: "1h", PINVerification: "required", TouchNotifications: true}) {
 		t.Fatal(cfg, used, e)
 	}
-	p := file(t, dir, "gtkaskpass-yubikey/config.yaml", "cacheTTL: 2h\n")
-	file(t, dir, "gtkaskpass-yubikey/config.json", `{}`)
+	p := file(t, dir, "ssh-askpass-fido/config.yaml", "cacheTTL: 2h\n")
+	file(t, dir, "ssh-askpass-fido/config.json", `{}`)
 	if _, _, e := Load("", dir, flagSet(t)); e == nil {
 		t.Fatal("ambiguous configuration accepted")
 	}

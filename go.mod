@@ -1,4 +1,4 @@
-module github.com/elafarge/gtkaskpass-yubikey
+module github.com/elafarge/ssh-askpass-fido
 
 go 1.24.0
 

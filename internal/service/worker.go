@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/elafarge/gtkaskpass-yubikey/internal/cacheipc"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/dialog"
+	"github.com/elafarge/ssh-askpass-fido/internal/cacheipc"
+	"github.com/elafarge/ssh-askpass-fido/internal/dialog"
 	"golang.org/x/sys/unix"
 )
 

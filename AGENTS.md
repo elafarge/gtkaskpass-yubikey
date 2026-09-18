@@ -3,9 +3,9 @@
 ## Project and layout
 
 - Linux-only Go application using GTK4 through gotk4 and CGO.
-- Read `DESIGN.md` for protocol/architecture decisions and `README.md` for usage.
-- `cmd/gtkaskpass-yubikey`: thin protocol adapter; `cmd/gtkaskpass-yubikey-cache`:
-  headless request/verification/cache service; `cmd/gtkaskpass-yubikey-ui`: GTK worker.
+- Read `docs/DESIGN.md` for protocol/architecture decisions and `README.md` for usage.
+- `cmd/ssh-askpass-fido`: thin protocol adapter; `cmd/ssh-askpass-fido-service`:
+  headless request/verification/cache service; `cmd/ssh-askpass-fido-ui`: GTK worker.
 - Keep protocol/controller/cache code under `internal/` independent of GTK.
   GTK imports belong in `internal/gtkui` and worker wiring. Native FIDO access
   belongs in `internal/fido`, behind the pure-Go `internal/device` interface.
@@ -65,7 +65,7 @@ nix flake check -L
 - Stdout is the SSH response protocol: exact response plus LF, or no bytes on
   cancellation/notification. Diagnostics and trace output go only to stderr.
 - Credential responses must not appear in ordinary diagnostics or metadata traces.
-  Only the explicit helper `GTKASKPASS_TRACE=secrets` mode includes them. Daemon
+  Only the explicit helper `SSH_ASKPASS_FIDO_TRACE=secrets` mode includes them. Daemon
   tracing is always metadata-only. Broken stderr must not break authentication.
 - OpenSSH owns signing and authentication. The service verifies FIDO PINs before
   returning them in required mode. PIN input and touch notifications are

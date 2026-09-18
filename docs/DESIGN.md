@@ -1,4 +1,4 @@
-# gtkaskpass-yubikey design
+# ssh-askpass-fido design
 
 Linux-only SSH askpass in Go, with GTK4 UI workers and a per-user headless
 request service. Code and documentation are Apache-2.0, copyright Étienne Lafarge.
@@ -20,13 +20,13 @@ askpass adapter ---- private Unix socket ---- request service
 
 Three installed executables have separate roles:
 
-- `gtkaskpass-yubikey` is a short-lived protocol adapter without GTK or FIDO
+- `ssh-askpass-fido` is a short-lived protocol adapter without GTK or FIDO
   dependencies. It forwards the original prompt/hint/session information,
   observes its parent's lifetime and termination signals, and owns SSH stdout.
-- `gtkaskpass-yubikey-cache` runs the headless service and cache-control commands.
+- `ssh-askpass-fido-service` runs the headless service and cache-control commands.
   It owns request state, classification, cache policy, device verification, and
-  worker lifetimes. The name is retained for service/configuration continuity.
-- `gtkaskpass-yubikey-ui` renders views and returns user actions through an
+  worker lifetimes, plus configuration validation and diagnostics.
+- `ssh-askpass-fido-ui` renders views and returns user actions through an
   inherited private socket pair on descriptor 3. It has no credential-cache or
   hardware logic and is not an interactive command-line entry point.
 
@@ -92,7 +92,7 @@ fallback. Compatibility PIN mode is an explicit service configuration.
 
 ## Request lifecycle and IPC
 
-The per-user socket is `$XDG_RUNTIME_DIR/gtkaskpass-yubikey/cache.sock`. Runtime
+The per-user socket is `$XDG_RUNTIME_DIR/ssh-askpass-fido/cache.sock`. Runtime
 and service directories must belong to the current UID and have mode 0700;
 the socket has mode 0600. Both ends check SO_PEERCRED. This is a per-user trust
 boundary, not isolation from root or other programs running as the same user.
@@ -126,7 +126,7 @@ the service's directory. PID reuse does not reuse a caller identity.
 Cobra owns the service/control command tree; the askpass adapter's prompt-only
 interface has no CLI option parsing. Koanf loads exactly one explicitly selected
 file or automatically discovers `config.yaml`, `config.yml`, `config.toml`, or
-`config.json` in `$XDG_CONFIG_HOME/gtkaskpass-yubikey` (default `~/.config`). Multiple
+`config.json` in `$XDG_CONFIG_HOME/ssh-askpass-fido` (default `~/.config`). Multiple
 automatic candidates fail rather than depending on parser order. There is no
 automatic environment or system-wide file loading.
 
@@ -192,7 +192,7 @@ identity. A changed connection cannot receive the cached PIN: switching devices
 starts with fresh input. Recheck the cache generation before and after hardware
 verification. Explicit PIN-invalid results invalidate only the generation used.
 
-`GTKASKPASS_CACHE=off` bypasses lookup/storage for that adapter request, not PIN
+`SSH_ASKPASS_FIDO_CACHE=off` bypasses lookup/storage for that adapter request, not PIN
 verification. For agent requests it must be in the agent's environment. Forget
 controls support a file/kind, an agent fingerprint, or all credentials. None
 displays values. Restart starts with an empty credential cache.
@@ -256,8 +256,8 @@ it. No hardware operation is started from a touch-only notification.
 ## Persistent device preferences
 
 Only public device-selection metadata persists at
-`$XDG_CONFIG_HOME/gtkaskpass-yubikey/devices.json` (default
-`~/.config/gtkaskpass-yubikey/devices.json`). The service owns this versioned JSON
+`$XDG_CONFIG_HOME/ssh-askpass-fido/devices.json` (default
+`~/.config/ssh-askpass-fido/devices.json`). The service owns this versioned JSON
 file and serializes writes, with a private 0700 directory and 0600 file, bounded
 reads, target checks, a same-directory temporary file, fsync, and atomic rename.
 Reject malformed/unsupported documents and symlink targets rather than silently
@@ -321,7 +321,7 @@ application, SSH key, or server. This also covers browser WebAuthn requests and
 forwarded-agent operations without special integration. Popups do not request
 activation or reuse desktop activation tokens. X11 uses the EWMH zero user-time
 hint; Wayland mapping focus is ultimately compositor policy. The separate app ID
-`io.github.gtkaskpass_yubikey.touch` permits compositor-specific rules.
+`io.github.ssh_askpass_fido.touch` permits compositor-specific rules.
 
 OpenSSH `none` touch helpers still retain their SIGTERM/parent-death lifetime,
 but their duplicate windows are suppressed when passive monitoring covers the
@@ -337,7 +337,7 @@ PIN request awaiting touch; signing can proceed as soon as it returns the PIN.
 
 ## Tracing, packaging, and verification
 
-All diagnostics are stderr-only. `GTKASKPASS_TRACE=metadata` logs adapter input,
+All diagnostics are stderr-only. `SSH_ASKPASS_FIDO_TRACE=metadata` logs adapter input,
 service/UI lifecycle, cache decisions, delivery, and exit without credentials.
 `secrets` explicitly includes the final adapter response, escaped with its LF.
 Workers and the service never enable secret traces. Native GTK informational

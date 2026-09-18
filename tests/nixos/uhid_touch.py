@@ -6,11 +6,11 @@ import socket
 import struct
 import time
 
-root = pathlib.Path("/run/gtkaskpass-touch-fixture")
+root = pathlib.Path("/run/ssh-askpass-fido-touch-fixture")
 root.mkdir(mode=0o700)
 descriptor = bytes.fromhex("06 d0 f1 09 01 a1 01 09 20 15 00 26 ff 00 75 08 95 40 81 02 09 21 95 40 91 02 c0")
 fd = os.open("/dev/uhid", os.O_RDWR | os.O_NONBLOCK)
-os.write(fd, struct.pack("<I128s64s64sHHIIII4096s", 11, b"gtkaskpass touch fixture",
+os.write(fd, struct.pack("<I128s64s64sHHIIII4096s", 11, b"ssh-askpass-fido touch fixture",
                         b"test", b"fixture", len(descriptor), 3, 0x1234, 0x5678, 1, 0, descriptor))
 server = socket.socket(socket.AF_UNIX)
 server.bind(str(root / "control"))
@@ -19,7 +19,7 @@ deadline = time.monotonic() + 10
 device = None
 while device is None:
     for path in pathlib.Path("/sys/class/hidraw").glob("hidraw*"):
-        if "gtkaskpass touch fixture" in (path / "device/uevent").read_text():
+        if "ssh-askpass-fido touch fixture" in (path / "device/uevent").read_text():
             device = pathlib.Path("/dev", path.name)
             break
     if time.monotonic() > deadline:

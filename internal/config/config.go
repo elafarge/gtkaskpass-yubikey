@@ -52,7 +52,7 @@ func Flags(f *pflag.FlagSet) {
 }
 
 // Load uses an explicit file exclusively, otherwise exactly one config file in
-// configDir/gtkaskpass-yubikey. Missing automatic config is fine; an explicit
+// configDir/ssh-askpass-fido. Missing automatic config is fine; an explicit
 // missing file or ambiguous formats is an error. No global configuration/env.
 func Load(path, configDir string, flags *pflag.FlagSet) (Settings, string, error) {
 	k := koanf.New(".")
@@ -61,7 +61,7 @@ func Load(path, configDir string, flags *pflag.FlagSet) (Settings, string, error
 	}
 	if path == "" {
 		for _, ext := range []string{"yaml", "yml", "toml", "json"} {
-			candidate := filepath.Join(configDir, "gtkaskpass-yubikey", "config."+ext)
+			candidate := filepath.Join(configDir, "ssh-askpass-fido", "config."+ext)
 			_, err := os.Lstat(candidate)
 			if errors.Is(err, os.ErrNotExist) {
 				continue

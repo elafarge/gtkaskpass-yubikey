@@ -77,7 +77,7 @@ identity authorized on a test SSH server:
 3. Force the direct-client path and non-terminal stderr:
 
    ```sh
-   GTKASKPASS_TRACE=metadata SSH_ASKPASS_REQUIRE=force \
+   SSH_ASKPASS_FIDO_TRACE=metadata SSH_ASKPASS_REQUIRE=force \
      ssh -o IdentityAgent=none -o IdentitiesOnly=yes \
      -i /path/to/disposable_fido_key user@test-server 2>ssh-test.log
    ```

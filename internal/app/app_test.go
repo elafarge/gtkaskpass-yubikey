@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/elafarge/gtkaskpass-yubikey/internal/cacheipc"
+	"github.com/elafarge/ssh-askpass-fido/internal/cacheipc"
 )
 
 func TestAdapterDelivery(t *testing.T) {

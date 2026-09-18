@@ -21,14 +21,14 @@ class ReleaseVerification(unittest.TestCase):
         self.directory = pathlib.Path(self.temp.name)
         self.release: dict[str, Any] = dict(draft=True, tag_name="v0.1.0", assets=[])
         for system in ("x86_64-linux", "aarch64-linux"):
-            base = f"gtkaskpass-yubikey-0.1.0-{system}"
+            base = f"ssh-askpass-fido-0.1.0-{system}"
             bundle = base + ".nar.zst"
             metadata = base + ".json"
             contents = {
                 bundle: b"synthetic exported closure",
                 metadata: json.dumps(dict(format=1, version="0.1.0", system=system,
                                           revision="commit-id",
-                                          storePath="/nix/store/" + "a" * 32 + "-gtkaskpass-yubikey-0.1.0")).encode(),
+                                          storePath="/nix/store/" + "a" * 32 + "-ssh-askpass-fido-0.1.0")).encode(),
             }
             contents[base + ".sha256"] = "".join(
                 hashlib.sha256(data).hexdigest() + "  " + name + "\n"

@@ -29,7 +29,7 @@ fi
 outdir=$(realpath -m "${4:?missing output directory}")
 mkdir -p "$outdir"
 package=$(nix build --no-link --print-out-paths ".#packages.$system.default")
-base="gtkaskpass-yubikey-$version-$system"
+base="ssh-askpass-fido-$version-$system"
 closure=$(nix-store --query --requisites "$package")
 mapfile -t paths <<< "$closure"
 [[ ${#paths[@]} -gt 0 ]]

@@ -9,9 +9,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/elafarge/gtkaskpass-yubikey/internal/askpass"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/dialog"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/touch"
+	"github.com/elafarge/ssh-askpass-fido/internal/askpass"
+	"github.com/elafarge/ssh-askpass-fido/internal/dialog"
+	"github.com/elafarge/ssh-askpass-fido/internal/touch"
 )
 
 type desiredTouch struct {
@@ -90,7 +90,7 @@ func (p *TouchPopups) runPopup(ctx context.Context, d touch.Device) {
 	}
 	if err != nil {
 		p.failed.Store(true)
-		_, _ = fmt.Fprintln(os.Stderr, "gtkaskpass: touch popup could not start")
+		_, _ = fmt.Fprintln(os.Stderr, "ssh-askpass-fido: touch popup could not start")
 		return
 	}
 	defer ui.Close()
@@ -104,7 +104,7 @@ func (p *TouchPopups) runPopup(ctx context.Context, d touch.Device) {
 		if err != nil {
 			if ctx.Err() == nil {
 				p.failed.Store(true)
-				_, _ = fmt.Fprintln(os.Stderr, "gtkaskpass: touch popup disconnected")
+				_, _ = fmt.Fprintln(os.Stderr, "ssh-askpass-fido: touch popup disconnected")
 			}
 			return
 		}

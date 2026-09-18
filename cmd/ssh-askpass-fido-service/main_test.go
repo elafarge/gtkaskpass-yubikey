@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/elafarge/gtkaskpass-yubikey/internal/config"
+	"github.com/elafarge/ssh-askpass-fido/internal/config"
 )
 
 func TestCobraConfiguration(t *testing.T) {
@@ -73,7 +73,7 @@ func TestConfigDiscoveryUsesHomeAndXDG(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", "")
-	dir := filepath.Join(home, ".config", "gtkaskpass-yubikey")
+	dir := filepath.Join(home, ".config", "ssh-askpass-fido")
 	if e := os.MkdirAll(dir, 0700); e != nil {
 		t.Fatal(e)
 	}

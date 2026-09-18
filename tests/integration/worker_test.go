@@ -24,7 +24,7 @@ func startUIWorker(t *testing.T) (func(any), func() map[string]any, *exec.Cmd) {
 	c, err := net.FileConn(a)
 	must(t, err)
 	t.Cleanup(func() { _ = c.Close() })
-	cmd := exec.Command(filepath.Join(filepath.Dir(askpass), "gtkaskpass-yubikey-ui"))
+	cmd := exec.Command(filepath.Join(filepath.Dir(askpass), "ssh-askpass-fido-ui"))
 	cmd.Env = env(nil)
 	cmd.ExtraFiles = []*os.File{b}
 	var diagnostics lockedBuffer

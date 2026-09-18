@@ -11,7 +11,7 @@ def call(**request):
     data = json.dumps(dict(version=1, **request)).encode()
     with socket.socket(socket.AF_UNIX) as conn:
         conn.settimeout(5)
-        conn.connect(os.environ["XDG_RUNTIME_DIR"] + "/gtkaskpass-yubikey/cache.sock")
+        conn.connect(os.environ["XDG_RUNTIME_DIR"] + "/ssh-askpass-fido/cache.sock")
         conn.sendall(struct.pack("!I", len(data)) + data)
         stream = conn.makefile("rb")
         length = struct.unpack("!I", stream.read(4))[0]

@@ -23,7 +23,7 @@ func New(mode string, w io.Writer) (*Logger, error) {
 		l.secrets = mode == "secrets"
 		return l, nil
 	default:
-		return nil, fmt.Errorf("GTKASKPASS_TRACE must be off, metadata, or secrets")
+		return nil, fmt.Errorf("SSH_ASKPASS_FIDO_TRACE must be off, metadata, or secrets")
 	}
 }
 

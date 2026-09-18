@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/elafarge/gtkaskpass-yubikey/internal/cache"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/lifecycle"
+	"github.com/elafarge/ssh-askpass-fido/internal/cache"
+	"github.com/elafarge/ssh-askpass-fido/internal/lifecycle"
 )
 
 func TestFrames(t *testing.T) {
@@ -111,7 +111,7 @@ func TestPrivateRuntimeDirectory(t *testing.T) {
 	if err := os.Chmod(r, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(t.TempDir(), filepath.Join(r, "gtkaskpass-yubikey")); err != nil {
+	if err := os.Symlink(t.TempDir(), filepath.Join(r, "ssh-askpass-fido")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := SocketPath(true); err == nil {

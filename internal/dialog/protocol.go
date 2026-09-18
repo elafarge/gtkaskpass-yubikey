@@ -2,8 +2,8 @@
 package dialog
 
 import (
-	"github.com/elafarge/gtkaskpass-yubikey/internal/askpass"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/device"
+	"github.com/elafarge/ssh-askpass-fido/internal/askpass"
+	"github.com/elafarge/ssh-askpass-fido/internal/device"
 	"time"
 )
 

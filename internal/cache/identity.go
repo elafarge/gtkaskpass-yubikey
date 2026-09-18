@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/elafarge/gtkaskpass-yubikey/internal/askpass"
+	"github.com/elafarge/ssh-askpass-fido/internal/askpass"
 	"golang.org/x/sys/unix"
 )
 

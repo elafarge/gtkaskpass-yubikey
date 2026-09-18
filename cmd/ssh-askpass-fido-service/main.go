@@ -13,15 +13,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/elafarge/gtkaskpass-yubikey/internal/cache"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/cacheipc"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/config"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/fido"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/lifecycle"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/preferences"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/service"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/touch"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/trace"
+	"github.com/elafarge/ssh-askpass-fido/internal/cache"
+	"github.com/elafarge/ssh-askpass-fido/internal/cacheipc"
+	"github.com/elafarge/ssh-askpass-fido/internal/config"
+	"github.com/elafarge/ssh-askpass-fido/internal/fido"
+	"github.com/elafarge/ssh-askpass-fido/internal/lifecycle"
+	"github.com/elafarge/ssh-askpass-fido/internal/preferences"
+	"github.com/elafarge/ssh-askpass-fido/internal/service"
+	"github.com/elafarge/ssh-askpass-fido/internal/touch"
+	"github.com/elafarge/ssh-askpass-fido/internal/trace"
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
 )
@@ -30,17 +30,17 @@ func main() {
 	signal.Ignore(syscall.SIGPIPE)
 	root := newCommand(os.Stdout, os.Stderr, runService)
 	if err := root.Execute(); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "gtkaskpass-yubikey-cache:", err)
+		_, _ = fmt.Fprintln(os.Stderr, "ssh-askpass-fido-service:", err)
 		os.Exit(2)
 	}
 }
 
 func newCommand(out, diagnostics io.Writer, serve func(context.Context, config.Settings) error) *cobra.Command {
-	root := &cobra.Command{Use: "gtkaskpass-yubikey-cache", Short: "SSH askpass request service and FIDO2 touch monitor", SilenceErrors: true, SilenceUsage: true}
+	root := &cobra.Command{Use: "ssh-askpass-fido-service", Short: "SSH askpass request service and FIDO2 touch monitor", SilenceErrors: true, SilenceUsage: true}
 	root.SetOut(out)
 	root.SetErr(diagnostics)
 	var path string
-	root.PersistentFlags().StringVar(&path, "config", "", "service config file (default: $XDG_CONFIG_HOME/gtkaskpass-yubikey/config.{yaml,yml,toml,json})")
+	root.PersistentFlags().StringVar(&path, "config", "", "service config file (default: $XDG_CONFIG_HOME/ssh-askpass-fido/config.{yaml,yml,toml,json})")
 	load := func(cmd *cobra.Command) (config.Settings, error) {
 		if cmd.Flags().Changed("config") && path == "" {
 			return config.Settings{}, errors.New("--config requires a nonempty path")
@@ -164,14 +164,14 @@ func runService(parent context.Context, cfg config.Settings) error {
 		return err
 	}
 	store := cache.New(ttl, lifecycle.BootTime)
-	svc := &service.Service{Cache: store, Devices: fido.Backend{}, VerifyPIN: cfg.PINVerification == "required", Preferences: preferences.New(filepath.Join(configDir, "gtkaskpass-yubikey", "devices.json")), WorkerPath: filepath.Join(filepath.Dir(executable), "gtkaskpass-yubikey-ui")}
+	svc := &service.Service{Cache: store, Devices: fido.Backend{}, VerifyPIN: cfg.PINVerification == "required", Preferences: preferences.New(filepath.Join(configDir, "ssh-askpass-fido", "devices.json")), WorkerPath: filepath.Join(filepath.Dir(executable), "ssh-askpass-fido-ui")}
 	if cfg.TouchNotifications {
 		env := map[string]string{}
 		for _, k := range service.SessionKeys {
 			env[k] = os.Getenv(k)
 		}
 		popups := service.NewTouchPopups(svc.WorkerPath, env)
-		monitor := &touch.Monitor{Sink: popups, Diagnostic: func(message string) { _, _ = fmt.Fprintln(os.Stderr, "gtkaskpass:", message) }}
+		monitor := &touch.Monitor{Sink: popups, Diagnostic: func(message string) { _, _ = fmt.Fprintln(os.Stderr, "ssh-askpass-fido:", message) }}
 		monitor.Event = func(d touch.Device, active bool) { log.Event("touch-state", "device", d.Path, "needed", active) }
 		svc.TouchMonitored = func() bool { return monitor.Covered() && popups.Available() }
 		monitorCtx, cancel := context.WithCancel(ctx)
@@ -180,7 +180,7 @@ func runService(parent context.Context, cfg config.Settings) error {
 		go func() { defer close(doneMonitor); monitor.Run(monitorCtx) }()
 		defer func() { cancel(); <-doneMonitor; <-donePopups }()
 		if !popups.Available() {
-			_, _ = fmt.Fprintln(os.Stderr, "gtkaskpass: no graphical session environment for touch popups")
+			_, _ = fmt.Fprintln(os.Stderr, "ssh-askpass-fido: no graphical session environment for touch popups")
 		}
 	}
 	return cacheipc.Serve(ctx, l, store, log, svc.Handle)

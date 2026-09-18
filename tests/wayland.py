@@ -8,10 +8,10 @@ import tempfile
 import time
 
 
-with tempfile.TemporaryDirectory(prefix="gtkaskpass-wayland-") as runtime:
+with tempfile.TemporaryDirectory(prefix="ssh-askpass-fido-wayland-") as runtime:
     env = dict(os.environ, XDG_RUNTIME_DIR=runtime, WAYLAND_DISPLAY="askpass-test",
                GDK_BACKEND="wayland", GSK_RENDERER="cairo", GTK_A11Y="none",
-               GTKASKPASS_CACHE="off", GTKASKPASS_TRACE="metadata")
+               SSH_ASKPASS_FIDO_CACHE="off", SSH_ASKPASS_FIDO_TRACE="metadata")
     env.pop("DISPLAY", None)
     with tempfile.TemporaryFile() as weston_log:
         env["XDG_CONFIG_HOME"] = str(pathlib.Path(runtime, "test-config"))
@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix="gtkaskpass-wayland-") as runtime:
                     raise AssertionError(weston_log.read().decode())
                 time.sleep(0.02)
             deadline = time.monotonic() + 5
-            while not pathlib.Path(runtime, "gtkaskpass-yubikey", "cache.sock").exists():
+            while not pathlib.Path(runtime, "ssh-askpass-fido", "cache.sock").exists():
                 assert daemon.poll() is None and time.monotonic() < deadline
                 time.sleep(.02)
             for hint, expected in [("none", 0), ("", 1)]:

@@ -1,6 +1,6 @@
 { lib, buildGoModule, pkg-config, gtk4, gobject-introspection, wrapGAppsHook4, adwaita-icon-theme, golangci-lint, libfido2 }:
 buildGoModule {
-  pname = "gtkaskpass-yubikey";
+  pname = "ssh-askpass-fido";
   version = "0.4.0";
   src = lib.fileset.toSource {
     root = ../.;
@@ -10,7 +10,7 @@ buildGoModule {
     ];
   };
   vendorHash = "sha256-Rghyi4e5RgUQJNzlKWYIC4zh0rJr9SZnJrFMq+zfT3A=";
-  subPackages = [ "cmd/gtkaskpass-yubikey" "cmd/gtkaskpass-yubikey-cache" "cmd/gtkaskpass-yubikey-ui" ];
+  subPackages = [ "cmd/ssh-askpass-fido" "cmd/ssh-askpass-fido-service" "cmd/ssh-askpass-fido-ui" ];
   nativeBuildInputs = [ pkg-config gobject-introspection wrapGAppsHook4 golangci-lint ];
   buildInputs = [ gtk4 gobject-introspection adwaita-icon-theme libfido2 ];
   env.CGO_ENABLED = 1;
@@ -27,20 +27,20 @@ buildGoModule {
     runHook postCheck
   '';
   postInstall = ''
-    install -Dm644 LICENSE "$out/share/licenses/gtkaskpass-yubikey/LICENSE"
-    install -Dm644 packaging/config.yaml "$out/share/gtkaskpass-yubikey/config.example.yaml"
+    install -Dm644 LICENSE "$out/share/licenses/ssh-askpass-fido/LICENSE"
+    install -Dm644 packaging/config.yaml "$out/share/ssh-askpass-fido/config.example.yaml"
     mkdir -p "$out/lib/systemd/user"
-    substitute packaging/gtkaskpass-yubikey-cache.service "$out/lib/systemd/user/gtkaskpass-yubikey-cache.service" \
+    substitute packaging/ssh-askpass-fido.service "$out/lib/systemd/user/ssh-askpass-fido.service" \
       --replace-fail '@bindir@' "$out/bin"
   '';
   postFixup = ''
-    wrapProgram "$out/bin/gtkaskpass-yubikey-ui" "''${gappsWrapperArgs[@]}"
+    wrapProgram "$out/bin/ssh-askpass-fido-ui" "''${gappsWrapperArgs[@]}"
   '';
   meta = {
     description = "GTK4 SSH askpass with touch notifications and an expiring in-memory credential cache";
-    homepage = "https://github.com/elafarge/gtkaskpass-yubikey";
+    homepage = "https://github.com/elafarge/ssh-askpass-fido";
     license = lib.licenses.asl20;
     platforms = lib.platforms.linux;
-    mainProgram = "gtkaskpass-yubikey";
+    mainProgram = "ssh-askpass-fido";
   };
 }

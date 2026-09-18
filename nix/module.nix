@@ -1,13 +1,13 @@
 { self }:
 { config, lib, pkgs, ... }:
 let
-  cfg = config.services.gtkaskpass-yubikey;
+  cfg = config.services.ssh-askpass-fido;
   executable = lib.getExe cfg.package;
-  configFile = (pkgs.formats.json { }).generate "gtkaskpass-yubikey-config.json" {
+  configFile = (pkgs.formats.json { }).generate "ssh-askpass-fido-config.json" {
     inherit (cfg) cacheTTL pinVerification touchNotifications trace;
   };
 in {
-  options.services.gtkaskpass-yubikey = {
+  options.services.ssh-askpass-fido = {
     enable = lib.mkEnableOption "GTK4 SSH askpass and its per-user credential cache";
     package = lib.mkOption {
       type = lib.types.package;
@@ -40,15 +40,15 @@ in {
     programs.ssh.enableAskPassword = true;
     programs.ssh.askPassword = executable;
     environment.systemPackages = [ cfg.package ];
-    systemd.user.services.gtkaskpass-yubikey-cache = {
+    systemd.user.services.ssh-askpass-fido = {
       description = "SSH askpass service and passive FIDO2 touch monitor";
       wantedBy = [ "graphical-session.target" ];
       partOf = [ "graphical-session.target" ];
       after = [ "graphical-session-pre.target" ];
       serviceConfig = {
-        ExecStart = "${cfg.package}/bin/gtkaskpass-yubikey-cache serve --config ${configFile}";
+        ExecStart = "${cfg.package}/bin/ssh-askpass-fido-service serve --config ${configFile}";
         Restart = "on-failure";
-        RuntimeDirectory = "gtkaskpass-yubikey";
+        RuntimeDirectory = "ssh-askpass-fido";
         RuntimeDirectoryMode = "0700";
         NoNewPrivileges = true;
         LimitCORE = 0;
