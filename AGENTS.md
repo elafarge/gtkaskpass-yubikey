@@ -4,10 +4,11 @@
 
 - Linux-only Go application using GTK4 through gotk4 and CGO.
 - Read `DESIGN.md` for protocol/architecture decisions and `README.md` for usage.
-- `cmd/gtkaskpass-yubikey`: short-lived frontend; `cmd/gtkaskpass-yubikey-cache`:
-  headless, per-user credential-cache daemon and control commands.
+- `cmd/gtkaskpass-yubikey`: thin protocol adapter; `cmd/gtkaskpass-yubikey-cache`:
+  headless request/verification/cache service; `cmd/gtkaskpass-yubikey-ui`: GTK worker.
 - Keep protocol/controller/cache code under `internal/` independent of GTK.
-  GTK imports belong in `internal/gtkui` and frontend wiring.
+  GTK imports belong in `internal/gtkui` and worker wiring. Native FIDO access
+  belongs in `internal/fido`, behind the pure-Go `internal/device` interface.
 - `nix/package.nix` is the standalone package recipe; `flake.nix` exposes packages,
   checks, and development shells; `nix/module.nix` configures NixOS user services.
 - Project code and documentation are Apache-2.0, copyright Étienne Lafarge.
@@ -49,13 +50,15 @@ nix flake check -L
 - Credential responses must not appear in ordinary diagnostics or metadata traces.
   Only the explicit helper `GTKASKPASS_TRACE=secrets` mode includes them. Daemon
   tracing is always metadata-only. Broken stderr must not break authentication.
-- OpenSSH owns validation and signing. PIN input and touch notifications are
+- OpenSSH owns signing and authentication. The service verifies FIDO PINs before
+  returning them in required mode. PIN input and touch notifications are
   separate invocations; `none` notifications finish on SIGTERM, including failures.
   Never infer successful authentication from notification termination.
 - Dismissing a notification hides it without ending its process; parent death and
   SIGTERM still close it. Input cancellation returns nonzero without a response.
-- GTK must run on the initial locked OS thread, with widget access on its main
-  context. Each helper is a non-unique application with an independent window/stdout.
+- GTK must run on the worker's initial locked OS thread, with widget access on
+  its main context. Each request has an independent UI worker; only the adapter
+  writes the SSH response to stdout.
 
 ## Cache invariants
 
@@ -66,14 +69,21 @@ nix flake check -L
   an agent fingerprint as a filesystem path. Unknown/ambiguous prompts and
   non-key credentials remain uncached.
 - TTL defaults to one hour, is absolute, and includes suspend. Hits never refresh it.
-- Cache responses are candidates, not validated credentials. Preserve same-caller
+- PIN acceptance is not proof of SSH authentication or credential ownership.
+  Required mode verifies cached and manual PINs on the selected device. Explicit
+  rejection invalidates its generation; do not auto-retry. Preserve same-caller
   retry bypass for file-based requests. Agent fingerprint prompts permit reuse
   across operations from the same agent (OpenSSH asks once per signing operation).
-  Agent failures require explicit forgetting, never inferred validation. Preserve
+  Unverified compatibility mode requires explicit forgetting after rejection.
+  Never infer validation from notification termination. Preserve
   generation-checked stores/invalidations. Concurrent or forgotten
   entries must not be overwritten/resurrected by a stale request.
 - Validate Unix socket/directory ownership and modes, check peer UID, bound frame
-  and cache sizes, and keep IPC deadlines. Cache failures fall back to input.
+  and cache sizes, and keep IPC deadlines. Service failure never silently bypasses
+  required PIN verification or replays a request after acceptance.
+- Persistent device preferences contain public identifiers only, never PINs,
+  tokens, hashes of PINs, or retry counters. Multiple devices require confirmation;
+  a serial/model match is not proof that the device owns the SSH credential.
 - Wipe owned secret buffers on replacement/expiry; avoid claims of universal
   zeroization of Go/GTK copies. Never bypass hardware presence using a cached PIN.
 

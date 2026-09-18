@@ -6,10 +6,12 @@
 | --- | --- |
 | Go unit tests | Prompt/hint precedence, response bytes/limits, cache identity and generations, absolute expiry, retry invalidation, IPC bounds/permissions, parent lifetime, trace redaction |
 | Go race detector | Concurrent core/controller/cache/IPC operations |
+| Service/device tests | Fake-backend PIN rejection/invalidation, re-verification, device binding, multiple-device confirmation, cancellation during verification, and persistent preference files |
 | golangci-lint | Standard Go correctness linters plus gofmt, including integration-tagged code |
 | `checks.<system>.integration` | Installed GTK executable on X11: input, empty response, cancellation/window-close, confirmation, signals, parent death, simultaneous windows, cache hits, expiry, key-file changes, forgetting, daemon loss, broken trace pipe |
 | OpenSSH cases in integration | Real `ssh-add` wrong-answer retry, successful load, removal/re-add using cache, and cancellation, with an isolated agent and synthetic encrypted key |
 | Agent PIN cases in integration | Real `ssh-agent` PIN prompts for software-backed FIDO test keys, repeated signature verification, fingerprint forgetting, and cache reuse through a genuine SSH agent-forwarding channel |
+| Worker IPC case | Actual GTK dropdown with saved preselection, explicit confirmation, PIN entry, verifying state, and cleared input on retry |
 | `checks.<system>.wayland` | Installed executable on a real headless Weston compositor; notification and input cancellation |
 | `checks.<system>.nixos` | Real systemd user socket activation, configured TTL, expiry, restart clearing, concurrent clients, and socket ownership/mode in a NixOS VM |
 
@@ -26,6 +28,9 @@ token. The real agent loads it using an explicit test-only provider allowlist.
 Neither fixture is installed in the application package. The Nix shell/check
 provide all these test dependencies. `SK_TEST_PROVIDER` may select an already
 built copy of this fixture.
+The test services use explicit `--pin-verification off` for this provider, which
+has no physical CTAP device. Required verification uses a pure-Go fake backend in
+service tests; it is not injectable into the production daemon.
 
 Run all checks with `nix flake check -L`. Run individual installed-package checks:
 
@@ -43,7 +48,7 @@ go build -o bin/ ./cmd/...
 golangci-lint run
 bash scripts/integration.sh
 go test -race ./internal/app ./internal/askpass ./internal/cache \
-  ./internal/cacheipc ./internal/lifecycle ./internal/trace
+  ./internal/cacheipc ./internal/lifecycle ./internal/trace ./internal/service ./internal/preferences
 ```
 
 `ASKPASS_BIN` and `CACHE_BIN` can select alternate built executables for the GUI
@@ -88,8 +93,16 @@ identity authorized on a test SSH server:
    input is requested again. Hardware touch is still owned by the token/provider.
 
 The software-key integration tests cover wrong-answer retries without consuming
-physical authenticator PIN attempts. A failed PIN operation that does not retry
-cannot be inferred by askpass; forget that candidate before the next attempt.
+physical authenticator PIN attempts. In required mode, only an explicit device
+rejection invalidates a candidate; transport failures are not wrong PINs. In
+unverified compatibility mode, forget a rejected candidate before the next attempt.
+
+For required-mode hardware acceptance, additionally check one-device automatic
+selection, multiple-device confirmation/preselection, correct PIN verification,
+cache-hit re-verification, hotplug/replacement, and reported retries. Use only
+correct PINs on the user's normal device. Wrong-PIN and blocked-device cases are
+simulated by the fake backend. The implementation uses libfido2 1.17's fresh
+PIN/UV-token API, with no credential creation, deletion, or assertions.
 
 ## Verification record
 
@@ -97,8 +110,8 @@ On 2026-09-18, the x86_64-linux Nix build and all flake checks passed using the
 committed nixpkgs lock, Go 1.26.7, GTK 4.22.4, and OpenSSH 10.5p1. Both X11 and
 native Wayland were exercised. The NixOS VM check ran with KVM.
 
-The aarch64-linux outputs are provided but have not been built on an ARM builder.
-Physical YubiKey acceptance has not been performed in this environment.
+The service/FIDO revision requires fresh native CI and physical acceptance;
+prior release results do not establish its physical verification behavior.
 
 Public CI now schedules native x86-64 and ARM builds and GUI tests on GitHub
 Actions; the x86-64 job also runs the NixOS VM. The Actions run status is the

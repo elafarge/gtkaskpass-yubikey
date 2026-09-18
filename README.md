@@ -2,142 +2,122 @@
 
 [![CI](https://github.com/elafarge/gtkaskpass-yubikey/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/elafarge/gtkaskpass-yubikey/actions/workflows/ci.yml)
 
-A Linux SSH askpass helper written in Go with GTK4. It provides passphrase/PIN
-entry, SSH confirmation dialogs, security-key touch notifications, and a per-user
-in-memory credential cache. Works on Wayland and X11.
+Linux SSH askpass in Go, with GTK4 dialogs, an in-memory credential cache, and
+FIDO2 PIN verification. A small askpass adapter delegates requests to a headless
+per-user service, which starts independent GTK workers for each dialog.
 
-## Build and try it
+## NixOS setup
 
-```sh
-nix build github:elafarge/gtkaskpass-yubikey
-export SSH_ASKPASS="$PWD/result/bin/gtkaskpass-yubikey"
-export SSH_ASKPASS_REQUIRE=prefer
-```
-
-For caching, run this in another terminal, or enable the systemd user service
-through the NixOS module below:
-
-```sh
-./result/bin/gtkaskpass-yubikey-cache serve --ttl 1h
-```
-
-The daemon needs your session's `XDG_RUNTIME_DIR`. It stores credentials only in
-process memory and uses `$XDG_RUNTIME_DIR/gtkaskpass-yubikey/cache.sock`.
-Stopping or restarting the daemon clears its cache.
-
-To preview a dialog directly:
-
-```sh
-./result/bin/gtkaskpass-yubikey "Enter SSH passphrase:"
-```
-
-Like every askpass helper, a successful input dialog prints its answer to stdout.
-Normally OpenSSH receives that output through a private pipe.
-
-## NixOS
-
-Add this repository as a flake input:
+Add the flake input and import its module:
 
 ```nix
 inputs.gtkaskpass-yubikey.url = "github:elafarge/gtkaskpass-yubikey";
 ```
 
-Then import its module (with `inputs` supplied through your NixOS `specialArgs`):
-
 ```nix
 { inputs, ... }: {
   imports = [ inputs.gtkaskpass-yubikey.nixosModules.default ];
-
   services.gtkaskpass-yubikey = {
     enable = true;
-    cacheTTL = "1h"; # default; e.g. "15m", "2h", or "0" to disable caching
+    cacheTTL = "1h";
+    pinVerification = "required";
   };
 }
 ```
 
-This configures `programs.ssh.askPassword`, installs the commands, and enables a
-systemd **user socket**. The daemon starts on the first cache request. No separate
-daemon startup command is needed. The module also exposes a `package` override.
+The module sets `SSH_ASKPASS`, installs all three executables, and enables the
+systemd user socket. The service starts on demand. `cacheTTL = "0"` disables
+credential caching while keeping the service and PIN verification available.
+The user needs normal access to their FIDO hidraw device (typically desktop
+session ACLs); the application does not run as root.
 
-Choose whether to prefer graphical input in your desktop/session configuration:
+For manual testing or non-NixOS Linux:
 
 ```sh
+nix build
+./result/bin/gtkaskpass-yubikey-cache serve --ttl 1h
+```
+
+In another terminal in the graphical session:
+
+```sh
+export SSH_ASKPASS="$PWD/result/bin/gtkaskpass-yubikey"
 export SSH_ASKPASS_REQUIRE=prefer
+ssh user@host
 ```
 
-Use `force` when you always want graphical input, including from a terminal.
-An already-running SSH agent needs its own `SSH_ASKPASS` and graphical-session
-environment; changing an SSH client's environment does not update the agent.
+The service is required even without caching. It uses
+`$XDG_RUNTIME_DIR/gtkaskpass-yubikey/cache.sock`; no shared `/tmp` socket fallback.
+The package includes systemd user units under `share/systemd/user/`.
 
-The flake exports packages, an app, development shells, and checks for
-`x86_64-linux` and `aarch64-linux`. The standalone recipe at `nix/package.nix`
-also supports `pkgs.callPackage` with compatible native dependencies.
+The executables are:
 
-For other systemd-based Linux installations, install the units in `packaging/`
-(replace `@bindir@` with the installation's absolute binary directory) and run:
+| Command | Role |
+| --- | --- |
+| `gtkaskpass-yubikey` | OpenSSH protocol adapter; owns stdout and cancellation |
+| `gtkaskpass-yubikey-cache` | Headless request service and cache controls |
+| `gtkaskpass-yubikey-ui` | Private GTK worker, launched by the service |
 
-```sh
-systemctl --user enable --now gtkaskpass-yubikey-cache.socket
-```
+Upgrade all three together and restart the service after upgrades. Restarting
+clears in-memory credentials. Do not invoke the UI worker directly.
 
-The Nix package includes ready-to-use units under `share/systemd/user/`.
+## SSH agents and forwarding
 
-## How the key flow works
+Configure `SSH_ASKPASS` and the graphical session environment **in the agent's
+environment before starting it**. Setting them only in a local SSH command or a
+remote Git process does not reconfigure an existing agent.
 
-OpenSSH controls the authentication sequence:
+Agent PIN prompts are keyed by the full public-key `SHA256:` fingerprint.
+Local SSH and forwarded Git operations for that key can reuse the same cached
+PIN. No custom SSH patch or `IdentityAgent none` workaround is needed. Your agent
+must contain the appropriate key (`ssh-add -l` lists public fingerprints); an
+agent restart empties its identity list independently of our PIN cache.
 
-1. It requests a local key-file passphrase, if necessary.
-2. It requests a FIDO PIN, if necessary; this is distinct from the file passphrase.
-3. It launches a `SSH_ASKPASS_PROMPT=none` notification while waiting for presence.
-4. It sends the notification SIGTERM when the signing attempt finishes.
+## PIN verification and device choice
 
-Depending on OpenSSH's signing path, a brief touch notification can appear before
-the PIN request. These are separate helper invocations; askpass receives no PIN
-validation result. Notification termination also occurs on failure, so the UI
-does not interpret it as proof of successful authentication.
+In the default **required** mode, the service verifies both newly entered PINs
+and cached PINs against the selected FIDO2 device before returning them to SSH.
 
-**For touch notifications, OpenSSH normally uses a terminal when stderr is a
-TTY—even with `SSH_ASKPASS_REQUIRE=force`.** Graphical launchers with non-terminal
-stderr naturally use askpass. To test the graphical flow from a terminal:
+- **One accessible FIDO2 device with a configured PIN:** automatically selected;
+  its identity appears above the PIN field.
+- **Multiple devices:** choose one in the dropdown and confirm it. A saved
+  preference preselects a unique matching device, but never bypasses confirmation.
+- **No eligible device:** a connect-device view refreshes discovery. Devices
+  without a configured PIN or inaccessible devices are not eligible.
+- **Incorrect PIN:** its cached candidate is invalidated, the answer is not sent
+  to SSH, and the dialog asks again. Remaining PIN retries are shown if available.
+- **Blocked, busy, disconnected, or unsupported device:** show an error rather
+  than silently returning an unverified PIN. No retry is automatic.
 
-```sh
-SSH_ASKPASS_REQUIRE=force ssh user@host 2>ssh-diagnostics.log
-```
+The service obtains and immediately discards a fresh PIN-authenticated token via
+libfido2. It does not change/reset PINs, create credentials, sign SSH data, or
+consume a hardware touch just to observe it. Verification failures consume real
+authenticator retry budget; do not deliberately test wrong PINs on your real key.
 
-PIN caching does not bypass hardware touch. The touch dialog's Dismiss button
-hides only the notification; SSH continues waiting, and the hidden helper exits
-when OpenSSH ends the attempt. To cancel authentication, cancel SSH itself.
+**PIN accepted is not SSH authentication success.** It proves only that the
+selected device accepted that PIN. OpenSSH still selects a device for signing,
+validates the signature, and enforces touch. Askpass cannot tell OpenSSH which
+device you selected or prove that it contains the requested key.
 
-Native FIDO SSH keys (`ed25519-sk`, `ecdsa-sk`) are the supported hardware path.
-Generic secret prompts also work, but PIV/PKCS#11 and GPG agents have different
-touch and PIN lifecycles.
+For a provider/device that cannot support this verification flow, explicitly set
+`pinVerification = "off"` (manual service: `--pin-verification off`). This is
+unverified compatibility mode: answers are candidates, and a rejected cached PIN
+must be forgotten manually. The required mode never falls back to it implicitly.
 
-## Cache behavior
+## Cache and device preferences
 
-- Default lifetime is **one hour from storing a manually submitted answer**.
-  Reads do not extend it; suspended time counts toward expiry.
-- File-based passphrases and FIDO PINs have separate entries per canonical
-  key-file path. Replacing or modifying the file invalidates its entry.
-- OpenSSH agent PIN prompts are cached by the full `SHA256:` public-key
-  fingerprint. Local SSH and forwarded-agent operations (such as Git on a
-  server) reuse that entry, even though the same agent process handles them.
-  Both `Enter PIN for ...` and `Enter PIN and confirm user presence for ...`
-  are supported. No custom SSH client or direct-signing workaround is needed.
-- A cache hit returns the answer immediately, without opening a dialog.
-- On an eligible miss, the input window offers a checked **Remember for …** box.
-- Unknown/ambiguous prompts, account passwords, confirmations, empty answers,
-  and touch notifications are not cached. `ssh-add -c` prompts are deliberately
-  uncached because their annotation is ambiguous with a filename. Paths at
-  OpenSSH's known truncation limits are also uncached.
-- One YubiKey containing multiple SSH keys has one PIN entry per SSH key, not a
-  device-wide entry. For file-based prompts, the key file must be a regular file
-  owned by the current user. Agent fingerprints need no local key file; resident
-  keys loaded directly into the agent also work. File-based and fingerprint-based
-  entries are separate: switching signing modes may require entering the PIN once.
-- An unavailable daemon falls back to ordinary input. Trace metadata explains
-  ineligible prompts and cache decisions.
+Credentials stay in service-owned memory. Default TTL is **one hour from storing
+a manual answer**, does not slide on use, and includes suspend. Cached PINs are
+bound to the selected device connection: a different or reconnected device is
+not automatically given the previous device's PIN.
 
-Forget one entry or all entries:
+File-based passphrases/PINs use separate entries per canonical file and metadata
+version. Fingerprint-based agent PINs use a separate namespace. Switching between
+direct and agent signing may require entering the PIN once in each mode.
+Unknown prompts, account passwords, confirmations, empty responses, ambiguous
+filenames, and touch notifications are not cached.
+
+Forget credentials with:
 
 ```sh
 gtkaskpass-yubikey-cache forget --key ~/.ssh/id_ed25519 --kind passphrase
@@ -146,130 +126,91 @@ gtkaskpass-yubikey-cache forget --fingerprint 'SHA256:YOUR_KEY_FINGERPRINT'
 gtkaskpass-yubikey-cache forget --all
 ```
 
-Use the canonical path when forgetting an entry whose symlink has been removed.
-Forgetting is a no-op if the cache is empty or its daemon is stopped.
+`GTKASKPASS_CACHE=off` bypasses cache lookup/storage for one adapter invocation,
+but retains required PIN verification. For agent-originated requests, set it in
+the agent environment. Forgetting through the control command takes effect
+without restarting the agent.
 
-Bypass lookup **and storage** for one command:
+Device-selection preferences persist in:
 
-```sh
-GTKASKPASS_CACHE=off SSH_ASKPASS_REQUIRE=force ssh user@host
+```text
+${XDG_CONFIG_HOME:-~/.config}/gtkaskpass-yubikey/devices.json
 ```
 
-Get an agent key's fingerprint with `ssh-add -l`. The fingerprint itself is public
-metadata, not the PIN. The `--fingerprint` option is exclusive with `--key/--kind`.
+The private, atomically written file contains fingerprint-to-device metadata
+only—never PINs, PIN hashes, tokens, or retry counts. A successfully delivered,
+verified submission records the preference independently of PIN retention. Device serials, where available,
+identify a stable preference. A model name, AAGUID, or `/dev/hidrawN` alone does
+not uniquely identify a device across reboots. Missing/ambiguous matches require
+fresh choice. If identical devices are indistinguishable, disconnect the unwanted
+one. Stop the service and remove the file to reset saved preferences.
 
-OpenSSH never tells askpass whether an answer was accepted. The daemon caches
-submitted **candidates**. For file-based prompts, a repeated request from the same
-caller is treated as a retry and bypasses the cache. Fingerprint-based agent PIN
-requests are different: OpenSSH's agent asks at most once per signing operation,
-so subsequent prompts from the persistent agent are independent operations and
-can reuse the cache. **If a PIN is rejected, forget its fingerprint entry before
-trying again.** The helper cannot infer rejection from caller exit or a touch
-notification, and it never retries or verifies a PIN against hardware itself.
+Memory-only does not promise universal zeroization of Go/GTK copies or unswappable
+memory. Owned buffers are cleared on replacement/expiry; the daemon disables core
+dumps. Logout clears the cache only if it stops the user service; a lingering
+user manager can retain it until expiry.
 
-`GTKASKPASS_CACHE=off` must be in the agent's own environment to bypass cache for
-agent-originated prompts; setting it in a remote Git process has no effect on the
-local agent. `forget --fingerprint` or `forget --all` works without restarting it.
+## Touch notifications
 
-The daemon is shared by processes of the same UID. Entries use owned byte buffers
-that are cleared on expiry/replacement; there is no persistent credential file.
-Go/GTK copies and OS swap are outside a guarantee of completely erasable or
-unswappable memory. Logout clears the cache when it stops the user service;
-a lingering user manager can retain it until expiry.
+OpenSSH launches separate `SSH_ASKPASS_PROMPT=none` helpers for notifications and
+terminates them with SIGTERM when the signing attempt ends, including on failure.
+Dismiss hides a notification without cancelling SSH. Parent death or SIGTERM
+cleans up the adapter, request, and worker.
 
-For software keys, the normal `ssh-agent` can independently retain decrypted
-keys with a lifetime. This helper neither changes those settings nor loads keys
-into your agent automatically.
+OpenSSH may display touch instructions directly on terminal stderr. Some agent
+paths stop their first notification before asking for the PIN and do not start a
+replacement. Service-owned UI does not invent a signing-completion event or
+guarantee a post-PIN touch window. Touch your key when its hardware indicator or
+OpenSSH requests it.
 
 ## Troubleshooting
 
 ```sh
 GTKASKPASS_TRACE=metadata SSH_ASKPASS_REQUIRE=force ssh user@host
-```
-
-Trace records go to **stderr**, with prompts, mode selection, cache decisions,
-window events, signals, output lengths, and exit status. Credential values are
-redacted. To include the exact response (quoted/escaped, including its newline):
-
-```sh
-GTKASKPASS_TRACE=secrets SSH_ASKPASS_REQUIRE=force ssh user@host
-```
-
-`secrets` explicitly prints credentials to stderr and any log receiving it.
-Tracing is off by default and never changes askpass stdout.
-
-GTK/GDK informational messages (including verbose Vulkan initialization) are
-suppressed by default; warnings and errors remain on stderr. Set
-`G_MESSAGES_DEBUG=all` explicitly when troubleshooting native GTK rendering.
-This is independent of `GTKASKPASS_TRACE`, whose metadata mode stays useful
-without the renderer log flood.
-
-Daemon tracing is metadata-only:
-
-```sh
-gtkaskpass-yubikey-cache serve --ttl 1h --trace
-```
-
-For an enabled user service, inspect status and normal diagnostics with:
-
-```sh
 systemctl --user status gtkaskpass-yubikey-cache.socket gtkaskpass-yubikey-cache.service
 journalctl --user -u gtkaskpass-yubikey-cache.service
+gtkaskpass-yubikey-cache devices
 ```
 
-Run only one daemon on a socket. A standalone daemon killed with SIGKILL may
-leave its socket behind; after confirming that no daemon is running, remove that
-stale socket before restarting. Systemd socket activation manages the listener
-independently of daemon restarts.
+Metadata tracing never includes credentials. `GTKASKPASS_TRACE=secrets` explicitly
+prints the final response to adapter stderr; it must be enabled deliberately.
+The service and UI worker stay metadata-only. Worker/native diagnostics go to
+the service stderr (normally its journal); informational GTK/Vulkan logs are
+suppressed, while warnings/errors remain. Stdout stays the exact SSH response.
+The `devices` diagnostic enumerates accessible PIN-configured FIDO2 devices and
+their public connection metadata/retry counts; it never asks for or tests a PIN.
 
-## Development and tests
+A fresh desktop login may be needed for changed session variables; existing
+agents retain their old environment. Do not run two services on the same socket.
+An unavailable service is an error, not silent verification bypass.
+
+## Development and verification
 
 ```sh
 nix develop
 go build -o bin/ ./cmd/...
 golangci-lint run
 go test ./...
-go vet ./...
 bash scripts/integration.sh
-```
-
-The initial gotk4 build takes several minutes. Outside Nix, use Go 1.24 or newer,
-a C compiler, pkg-config, and GTK4/GLib/GObject Introspection development packages
-compatible with gotk4 v0.4.1 (the pinned environment uses GTK 4.22.4).
-
-The complete reproducible check suite is:
-
-```sh
 nix flake check -L
 ```
 
-It runs golangci-lint, Go unit/race checks, real GTK dialogs under Xvfb, real `ssh-add`
-integration with disposable keys/an agent, a headless Weston Wayland smoke test,
-and a NixOS VM test of the socket-activated user service. The VM check needs a
-builder with KVM support. GUI tests drive the real executable using external
-keyboard/window automation; production binaries contain no test secret injector.
+Use the pinned Nix environment: Go 1.24+, GTK4 compatible with gotk4 v0.4.1, and
+libfido2 1.17+ with the public PIN/UV-token API are required. Cold GTK compilation
+takes several minutes. FIDO calls are isolated behind a backend interface;
+controller tests simulate wrong PINs without using physical tokens.
 
-See [tests/README.md](tests/README.md) for test layers, individual commands, and
-physical-token acceptance testing. See [DESIGN.md](DESIGN.md) for the protocol and
-architecture decisions.
+Checks include unit/race tests, real adapter/service/GTK IPC, a device chooser and
+retry UI test, real OpenSSH agent/forwarding tests with software FIDO fixtures,
+Wayland, and a NixOS service VM. The software provider tests run in explicit
+unverified compatibility mode and do not claim physical PIN verification.
+See [tests/README.md](tests/README.md) for details and hardware acceptance.
 
-## CI and releases
-
-GitHub Actions checks pushes and pull requests on native x86-64 and ARM Linux
-runners. It includes golangci-lint, the real GUI/OpenSSH suites, and the x86-64
-NixOS VM check. `AGENTS.md` records contributor and coding-agent conventions.
-
-Pushing a stable `vMAJOR.MINOR.PATCH` tag matching the Nix package version runs
-the release pipeline. After all checks pass, it publishes native Nix runtime
-closures, metadata, and SHA-256 checksums to
-[GitHub Releases](https://github.com/elafarge/gtkaskpass-yubikey/releases).
-
-This uses free standard public Actions runners and release downloads, without
-Actions artifact storage. GitHub Packages is free for public packages but has no
-native Nix/Go registry, so release assets are the distribution channel here.
-See [docs/RELEASING.md](docs/RELEASING.md) for the billing references, release
-procedure, permissions, and prebuilt-package installation instructions.
+CI uses standard public x86-64 and ARM runners, with the KVM VM check on x86-64.
+Version tags matching the Nix package version publish checked runtime closures
+and checksums through GitHub Releases. See [docs/RELEASING.md](docs/RELEASING.md).
 
 ## License
 
-Copyright 2026 Étienne Lafarge. Apache License, Version 2.0. See [LICENSE](LICENSE).
+Copyright 2026 Étienne Lafarge. Apache License, Version 2.0: [LICENSE](LICENSE).
+Architecture and protocol details: [DESIGN.md](DESIGN.md).

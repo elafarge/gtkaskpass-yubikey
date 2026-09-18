@@ -23,6 +23,15 @@ No paid runner, external signing/cache service, or personal access token is need
 GitHub's published terms can change; the linked billing documentation is the
 authority, and account-wide settings/usage from other repositories are separate.
 
+## Service/worker compatibility
+
+Version 0.2.0 packages the thin adapter, headless request/FIDO service, and GTK
+worker together. Deploy all three from the same package and restart the service;
+the adapter uses request protocol v2. TTL zero still requires the service.
+Required FIDO PIN verification is the default; compatibility providers must opt
+into `pinVerification = "off"`. Runtime closures now include libfido2 as well as
+GTK. Public device preferences persist independently of the in-memory cache.
+
 ## CI
 
 `CI` runs on pushes to `main`, pull requests, and manual dispatch. The reusable
