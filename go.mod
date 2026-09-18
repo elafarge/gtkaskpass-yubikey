@@ -1,6 +1,6 @@
 module github.com/elafarge/ssh-askpass-fido
 
-go 1.24.0
+go 1.26.0
 
 require (
 	github.com/diamondburned/gotk4/pkg v0.4.1
@@ -13,7 +13,7 @@ require (
 	github.com/knadh/koanf/v2 v2.3.6
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
-	golang.org/x/sys v0.31.0
+	golang.org/x/sys v0.48.0
 )
 
 require (
