@@ -1,11 +1,10 @@
 # gtkaskpass-yubikey design
 
-Status: **approved; implementation in progress**.
+Status: **implemented; approved design with implementation notes**.
 
-This first phase creates only this document. Repository initialization, commits,
-code, tests, and Nix files follow approval. The existing `prompt.md` records the
-original request. This revision also includes the requested per-key, memory-only
-credential cache with a configurable lifetime defaulting to one hour.
+The design-only phase preceded implementation and was approved by the user.
+The existing `prompt.md` records the original request. This revision includes
+the subsequent memory-cache, trace-mode, and Apache-2.0 requirements.
 
 ## 1. Goal
 
@@ -207,7 +206,8 @@ bindings as dependencies; build-time binding generation is unnecessary.
 
 GTK initialization, widget access, and the main loop run on the initial locked
 OS thread. Go signal/parent watchers cancel a context; a 50ms GLib timer observes
-cancellation and shuts down on the GTK thread. Completion is idempotent so submit, close, and signals cannot produce
+cancellation and shuts down on the GTK thread. Completion is idempotent so
+submit, close, and signals cannot produce
 duplicate output or leave a blocked main loop.
 
 Use a non-unique GTK application: each invocation has its own process, window,
@@ -268,7 +268,9 @@ response. The daemon receives no signing requests and requires no USB access.
   to invalidate entries when the file is replaced or modified. Resolve relative
   paths against the helper's inherited working directory and resolve symlinks.
   The daemon independently resolves/stats the path before using or storing an
-  entry. Parsing must preserve whitespace inside filenames.
+  entry. Parsing must preserve whitespace inside filenames. Eligible files must
+  be regular files owned by the current user. The implementation leaves annotated
+  `ssh-add -c` prompts uncached because their suffix is ambiguous with a filename.
 - This identity comes from the prompt and local file metadata; it is not a
   cryptographically verified key fingerprint. Do not read/decrypt private-key
   contents to derive it. If the format/path is ambiguous, potentially truncated
@@ -286,7 +288,7 @@ response. The daemon receives no signing requests and requires no USB access.
 - Default TTL: **`1h`**, configured on the daemon as a Go duration (for example,
   `15m` or `2h`). `0` disables caching; negative or invalid values are configuration
   errors. NixOS exposes the same setting as `cacheTTL`.
-- Expiry is **absolute from manual submission**, not sliding: reading a cached
+- Expiry is **absolute from storing a manual submission**, not sliding: reading a cached
   entry never extends it. Typing a new response replaces the entry and starts a
   new TTL. Store each entry's deadline explicitly; use Linux elapsed time that
   includes suspend (`CLOCK_BOOTTIME`) so suspend does not extend its lifetime.
@@ -296,6 +298,9 @@ response. The daemon receives no signing requests and requires no USB access.
 - Use bounded cache/protocol sizes and prune caller bookkeeping when callers
   exit. Resource exhaustion falls back to prompting rather than retaining
   unbounded data or dropping retry protection.
+  Implemented bounds are 256 keys, 4096 caller/key records, and 256 pending
+  submissions. Pending submission leases expire after ten minutes; an answer
+  submitted after its lease expires is still returned to SSH but is not cached.
 - Setting `GTKASKPASS_CACHE=off` on an askpass invocation bypasses both lookup
   and storage. This lets the user force fresh input without reconfiguring the
   daemon. Explicit forgetting is available for one key/kind or the whole cache.
@@ -340,6 +345,8 @@ so stale requests cannot overwrite newer entries or resurrect credentials after
 - Both sides check peer UID with `SO_PEERCRED`. Requests are versioned,
   length-bounded, and deadline-limited. Operations cover lookup, conditional
   store/invalidation, forgetting, and nonsecret configuration metadata for the UI.
+  Protocol v1 uses length-prefixed JSON frames of at most 16 KiB, a two-second
+  I/O deadline, and at most 64 concurrent connections.
   IPC secrets are carried only in the socket payload, never in argv, environment
   variables, daemon logs, or cache-control output. The helper's explicit
   credential-inclusive trace can additionally print its response to stderr
@@ -437,8 +444,9 @@ Trace records include timestamp, helper PID/request ID, and event name. Record:
 - Incoming prompt argument and `SSH_ASKPASS_PROMPT`, preserving their distinction
   from the normalized classification text; record only explicitly relevant
   environment settings, not a dump of the full process environment.
-- Selected UI mode, cache eligibility/key identity, hit/miss/bypass/expiry, and
-  fallback reasons. Include daemon request IDs where available for correlation.
+- Selected UI mode, cache eligibility/key identity, hit/miss/bypass/retry/file
+  changes, and fallback reasons. An expired entry produces a miss. Include
+  daemon-issued submission tokens where available for correlation.
 - UI submit/cancel/dismiss, signals and parent exit, and notification shutdown.
 - Outgoing response byte count, stdout-write success/failure, and exit status.
   Distinguish an intended write from bytes actually written on a partial failure.
@@ -627,7 +635,7 @@ supports it.
 
 ## 9. Repository and implementation milestones
 
-After design approval, initialize Git in this directory and use focused commits:
+Implementation is organized into focused commits around these milestones:
 
 1. Approved design, Apache-2.0 license, and repository/module foundation.
 2. Askpass contract, classifier, controller, and their unit tests.
@@ -658,24 +666,28 @@ an identity or changing Git configuration.
 ### 9.1 License decision
 
 The user selected **Apache License, Version 2.0** (`Apache-2.0`) for this project's
-code and documentation. Add the full license text as `LICENSE` during the
-implementation phase and use the same SPDX identifier in project metadata.
+code and documentation. The full license text is in `LICENSE`; project metadata
+uses the same SPDX identifier.
 Third-party dependencies retain their own licenses and required notices.
 
 ## 10. Review points and confirmed decisions
 
-1. **Approve the OpenSSH-driven flow in section 2:** separate PIN and touch
+1. **Approved OpenSSH-driven flow in section 2:** separate PIN and touch
    invocations, no helper-side validation, and notification termination rather
    than direct touch detection. This is the central scope decision.
-2. **Confirm the hardware path:** the prompt example suggests native FIDO SSH
-   keys. Mention if the intended setup instead uses PIV/PKCS#11 or GPG.
+2. **Hardware path:** native FIDO SSH keys, as scoped in the approved design.
 3. **Cache semantics:** per-key passphrases and PINs, one-hour absolute default
    TTL, headless per-user daemon, and explicit forgetting. Cached responses are
    candidates: same-caller re-prompts bypass them, but failures without a
    re-prompt cannot be detected through askpass alone (section 5.1).
 4. **License (confirmed):** Apache-2.0 for project code and documentation.
-5. **Go module path:** propose local module `gtkaskpass-yubikey` initially. A
-   preferred eventual repository/import path can be supplied before coding.
+5. **Go module path:** local module `gtkaskpass-yubikey`; a public repository
+   path can replace it when the project is published.
+
+Implementation verification and physical-token acceptance steps are recorded in
+`tests/README.md`. The application uses gotk4 v0.4.1 with the pinned Nix GTK4
+environment. Python is used only for the Wayland smoke and NixOS VM test drivers;
+both installed executables and the main integration harness are written in Go.
 
 ## 11. Protocol and dependency references
 
