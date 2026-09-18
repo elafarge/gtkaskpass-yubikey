@@ -45,10 +45,11 @@ type Store struct {
 }
 
 type Lookup struct {
-	Secret []byte
-	Token  uint64
-	TTL    time.Duration
-	Reason string
+	Generation uint64
+	Secret     []byte
+	Token      uint64
+	TTL        time.Duration
+	Reason     string
 }
 
 func New(ttl time.Duration, now func() time.Duration) *Store {
@@ -102,6 +103,7 @@ func (s *Store) Begin(id Identity, caller string) Lookup {
 			s.seen[sk] = e.generation
 		}
 		r.Secret = append([]byte(nil), e.secret...)
+		r.Generation = e.generation
 		r.Reason = "hit"
 		return r
 	}
@@ -111,6 +113,22 @@ func (s *Store) Begin(id Identity, caller string) Lookup {
 	r.Token, r.TTL = s.next(), s.ttl
 	s.tickets[r.Token] = ticket{id, e.generation, caller, s.now() + TicketLifetime}
 	return r
+}
+
+// Current and Reject guard in-flight verification against concurrent forgetting.
+func (s *Store) Current(id Identity, generation uint64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.expire()
+	e := s.entries[id.Key]
+	return e != nil && e.identity == id && e.generation == generation && len(e.secret) > 0
+}
+func (s *Store) Reject(id Identity, generation uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if e := s.entries[id.Key]; e != nil && e.identity == id && e.generation == generation {
+		s.erase(e)
+	}
 }
 
 // Commit accepts only the current file/version and a still-current lease.

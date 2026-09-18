@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -14,7 +15,10 @@ import (
 
 	"github.com/elafarge/gtkaskpass-yubikey/internal/cache"
 	"github.com/elafarge/gtkaskpass-yubikey/internal/cacheipc"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/fido"
 	"github.com/elafarge/gtkaskpass-yubikey/internal/lifecycle"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/preferences"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/service"
 	"github.com/elafarge/gtkaskpass-yubikey/internal/trace"
 	"golang.org/x/sys/unix"
 )
@@ -29,18 +33,28 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: gtkaskpass-yubikey-cache serve [--ttl 1h] [--trace] | forget (--all | --fingerprint SHA256:... | --key PATH --kind passphrase|pin)")
+		return errors.New("usage: gtkaskpass-yubikey-cache serve [--ttl 1h] [--pin-verification required|off] [--trace] | devices | forget (--all | --fingerprint SHA256:... | --key PATH --kind passphrase|pin)")
 	}
 	f := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	f.SetOutput(os.Stderr)
 	switch args[0] {
+	case "devices":
+		if len(args) != 1 {
+			return errors.New("devices takes no arguments")
+		}
+		devices, err := (fido.Backend{}).Discover(context.Background())
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(devices)
 	case "serve":
 		ttl := f.Duration("ttl", time.Hour, "absolute credential lifetime; 0 disables caching")
 		tracing := f.Bool("trace", false, "trace metadata to stderr")
+		verification := f.String("pin-verification", "required", "required or off (unverified compatibility mode)")
 		if err := f.Parse(args[1:]); err != nil {
 			return err
 		}
-		if *ttl < 0 || f.NArg() != 0 {
+		if *ttl < 0 || f.NArg() != 0 || (*verification != "required" && *verification != "off") {
 			return errors.New("invalid TTL or extra arguments")
 		}
 		if err := unix.Setrlimit(unix.RLIMIT_CORE, &unix.Rlimit{}); err != nil {
@@ -58,7 +72,17 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		return cacheipc.Serve(ctx, l, cache.New(*ttl, lifecycle.BootTime), log)
+		store := cache.New(*ttl, lifecycle.BootTime)
+		executable, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		configDir, err := os.UserConfigDir()
+		if err != nil {
+			return err
+		}
+		svc := &service.Service{Cache: store, Devices: fido.Backend{}, VerifyPIN: *verification == "required", Preferences: preferences.New(filepath.Join(configDir, "gtkaskpass-yubikey", "devices.json")), WorkerPath: filepath.Join(filepath.Dir(executable), "gtkaskpass-yubikey-ui")}
+		return cacheipc.Serve(ctx, l, store, log, svc.Handle)
 	case "forget":
 		all := f.Bool("all", false, "forget every key")
 		path := f.String("key", "", "key-file path")

@@ -6,16 +6,11 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"runtime"
 	"syscall"
 
 	"github.com/elafarge/gtkaskpass-yubikey/internal/app"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/cacheipc"
-	"github.com/elafarge/gtkaskpass-yubikey/internal/gtkui"
 	"github.com/elafarge/gtkaskpass-yubikey/internal/trace"
 )
-
-func init() { runtime.LockOSThread() }
 
 func main() {
 	// gotk4 routes GLib/GDK messages through slog.Default(). Native renderer
@@ -41,7 +36,7 @@ func main() {
 		case <-ctx.Done():
 		}
 	}()
-	a := app.App{UI: gtkui.UI{}, Out: os.Stdout, Err: os.Stderr, Getenv: os.Getenv, CacheCall: cacheipc.Call}
+	a := app.App{Out: os.Stdout, Err: os.Stderr, Getenv: os.Getenv}
 	code := a.Run(ctx, os.Args[1:])
 	cancel()
 	signal.Stop(signals)

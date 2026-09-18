@@ -1,7 +1,7 @@
-{ lib, buildGoModule, pkg-config, gtk4, gobject-introspection, wrapGAppsHook4, adwaita-icon-theme, golangci-lint }:
+{ lib, buildGoModule, pkg-config, gtk4, gobject-introspection, wrapGAppsHook4, adwaita-icon-theme, golangci-lint, libfido2 }:
 buildGoModule {
   pname = "gtkaskpass-yubikey";
-  version = "0.1.0";
+  version = "0.2.0";
   src = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
@@ -10,9 +10,9 @@ buildGoModule {
     ];
   };
   vendorHash = "sha256-AT/GyatVsm9X3XuEV++WNhkV0EsmevE31NGVweMTBXA=";
-  subPackages = [ "cmd/gtkaskpass-yubikey" "cmd/gtkaskpass-yubikey-cache" ];
+  subPackages = [ "cmd/gtkaskpass-yubikey" "cmd/gtkaskpass-yubikey-cache" "cmd/gtkaskpass-yubikey-ui" ];
   nativeBuildInputs = [ pkg-config gobject-introspection wrapGAppsHook4 golangci-lint ];
-  buildInputs = [ gtk4 gobject-introspection adwaita-icon-theme ];
+  buildInputs = [ gtk4 gobject-introspection adwaita-icon-theme libfido2 ];
   env.CGO_ENABLED = 1;
   ldflags = [ "-s" "-w" ];
   dontWrapGApps = true;
@@ -23,7 +23,7 @@ buildGoModule {
     golangci-lint run
     go vet ./...
     go test ./...
-    go test -race ./internal/app ./internal/askpass ./internal/cache ./internal/cacheipc ./internal/lifecycle ./internal/trace
+    go test -race ./internal/app ./internal/askpass ./internal/cache ./internal/cacheipc ./internal/lifecycle ./internal/trace ./internal/preferences ./internal/service
     runHook postCheck
   '';
   postInstall = ''
@@ -33,7 +33,7 @@ buildGoModule {
       --replace-fail '@bindir@' "$out/bin"
   '';
   postFixup = ''
-    wrapProgram "$out/bin/gtkaskpass-yubikey" "''${gappsWrapperArgs[@]}"
+    wrapProgram "$out/bin/gtkaskpass-yubikey-ui" "''${gappsWrapperArgs[@]}"
   '';
   meta = {
     description = "GTK4 SSH askpass with touch notifications and an expiring in-memory credential cache";

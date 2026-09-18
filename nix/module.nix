@@ -2,12 +2,7 @@
 { config, lib, pkgs, ... }:
 let
   cfg = config.services.gtkaskpass-yubikey;
-  enabledCache = cfg.cacheTTL != "0";
   executable = lib.getExe cfg.package;
-  noCache = pkgs.writeShellScript "gtkaskpass-yubikey-no-cache" ''
-    export GTKASKPASS_CACHE=off
-    exec ${executable} "$@"
-  '';
 in {
   options.services.gtkaskpass-yubikey = {
     enable = lib.mkEnableOption "GTK4 SSH askpass and its per-user credential cache";
@@ -22,12 +17,17 @@ in {
       example = "15m";
       description = "Absolute credential lifetime in Go duration syntax; 0 disables caching.";
     };
+    pinVerification = lib.mkOption {
+      type = lib.types.enum [ "required" "off" ];
+      default = "required";
+      description = "Verify FIDO PINs against the selected device; off is unverified compatibility mode.";
+    };
   };
   config = lib.mkIf cfg.enable {
     programs.ssh.enableAskPassword = true;
-    programs.ssh.askPassword = if enabledCache then executable else toString noCache;
+    programs.ssh.askPassword = executable;
     environment.systemPackages = [ cfg.package ];
-    systemd.user.sockets.gtkaskpass-yubikey-cache = lib.mkIf enabledCache {
+    systemd.user.sockets.gtkaskpass-yubikey-cache = {
       description = "SSH askpass credential cache socket";
       wantedBy = [ "sockets.target" ];
       socketConfig = {
@@ -37,12 +37,12 @@ in {
         RemoveOnStop = true;
       };
     };
-    systemd.user.services.gtkaskpass-yubikey-cache = lib.mkIf enabledCache {
+    systemd.user.services.gtkaskpass-yubikey-cache = {
       description = "SSH askpass in-memory credential cache";
       requires = [ "gtkaskpass-yubikey-cache.socket" ];
       after = [ "gtkaskpass-yubikey-cache.socket" ];
       serviceConfig = {
-        ExecStart = "${cfg.package}/bin/gtkaskpass-yubikey-cache serve --ttl ${cfg.cacheTTL}";
+        ExecStart = "${cfg.package}/bin/gtkaskpass-yubikey-cache serve --ttl ${cfg.cacheTTL} --pin-verification ${cfg.pinVerification}";
         Restart = "on-failure";
         NoNewPrivileges = true;
         LimitCORE = 0;

@@ -39,7 +39,29 @@ func TestMain(m *testing.M) {
 	if err := wm.Start(); err != nil {
 		panic(err)
 	}
+	root, err := os.MkdirTemp("", "ga-suite-")
+	if err != nil {
+		panic(err)
+	}
+	if err := os.Setenv("XDG_RUNTIME_DIR", root); err != nil {
+		panic(err)
+	}
+	svc := exec.Command(daemon, "serve", "--pin-verification", "off")
+	svc.Stderr = os.Stderr
+	if err := svc.Start(); err != nil {
+		panic(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(filepath.Join(root, "gtkaskpass-yubikey", "cache.sock")); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	code := m.Run()
+	_ = svc.Process.Signal(syscall.SIGTERM)
+	_ = svc.Wait()
+	_ = os.RemoveAll(root)
 	_ = wm.Process.Kill() // best-effort cleanup; the window manager may have exited
 	_ = wm.Wait()
 	os.Exit(code)
@@ -335,7 +357,7 @@ func cacheEnv(t *testing.T, ttl string) (map[string]string, *process) {
 		}
 	})
 	e := map[string]string{"XDG_RUNTIME_DIR": root, "GTKASKPASS_CACHE": "on"}
-	d := start(t, e, daemon, "serve", "--ttl", ttl, "--trace")
+	d := start(t, e, daemon, "serve", "--ttl", ttl, "--trace", "--pin-verification", "off")
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(filepath.Join(root, "gtkaskpass-yubikey", "cache.sock")); err == nil {
@@ -382,8 +404,7 @@ func TestCache(t *testing.T) {
 	must(t, d.cmd.Process.Signal(syscall.SIGTERM))
 	wait(t, d, 0, "")
 	p = helper(t, e, prompt)
-	typeAnswer(t, p, "SSH passphrase", "fallback")
-	wait(t, p, 0, "fallback\n")
+	wait(t, p, 2, "") // unavailable coordinator cannot replay an interactive request
 	if strings.Contains(d.err.String(), "cached-answer") || strings.Contains(d.err.String(), "123456") {
 		t.Fatal("daemon secret leak")
 	}

@@ -70,6 +70,7 @@
             export HOME="$TMPDIR/home"
             mkdir -p "$HOME"
             export ASKPASS_BIN=${package}/bin/gtkaskpass-yubikey
+            export CACHE_BIN=${package}/bin/gtkaskpass-yubikey-cache
             export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; }}
             dbus-run-session --config-file=${./tests/session.conf} -- python ${./tests/wayland.py}
             touch "$out"
@@ -85,7 +86,7 @@
               golangci-lint actionlint shellcheck
               jq zstd
             ];
-            buildInputs = with pkgs; [ gtk4 openssl ];
+            buildInputs = with pkgs; [ gtk4 openssl libfido2 ];
             shellHook = ''
               export GSETTINGS_SCHEMA_DIR=${pkgs.gtk4}/share/gsettings-schemas/${pkgs.gtk4.name}/glib-2.0/schemas
             '';

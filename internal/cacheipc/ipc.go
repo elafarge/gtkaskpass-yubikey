@@ -30,20 +30,60 @@ const Timeout = 2 * time.Second
 func closeQuietly(c io.Closer) { _ = c.Close() }
 
 type Request struct {
-	Version int       `json:"version"`
-	Op      string    `json:"op"`
-	Key     cache.Key `json:"key"`
-	Token   uint64    `json:"token,omitempty"`
-	Secret  []byte    `json:"secret,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	Hint    string            `json:"hint,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+	NoCache bool              `json:"no_cache,omitempty"`
+	Trace   bool              `json:"trace,omitempty"`
+	Version int               `json:"version"`
+	Op      string            `json:"op"`
+	Key     cache.Key         `json:"key"`
+	Token   uint64            `json:"token,omitempty"`
+	Secret  []byte            `json:"secret,omitempty"`
 }
 type Response struct {
-	Version int           `json:"version"`
-	Reason  string        `json:"reason,omitempty"`
-	Error   string        `json:"error,omitempty"`
-	Token   uint64        `json:"token,omitempty"`
-	TTL     time.Duration `json:"ttl,omitempty"`
-	Secret  []byte        `json:"secret,omitempty"`
+	Event          string        `json:"event,omitempty"`
+	Code           int           `json:"code,omitempty"`
+	Notify         bool          `json:"notify,omitempty"`
+	SecretResponse bool          `json:"secret_response,omitempty"`
+	Version        int           `json:"version"`
+	Reason         string        `json:"reason,omitempty"`
+	Error          string        `json:"error,omitempty"`
+	Token          uint64        `json:"token,omitempty"`
+	TTL            time.Duration `json:"ttl,omitempty"`
+	Secret         []byte        `json:"secret,omitempty"`
 }
+
+// Framed messages are shared by the request stream and private UI socketpair.
+func ReadFrame(r io.Reader, v any) error  { return readFrame(r, v) }
+func WriteFrame(w io.Writer, v any) error { return writeFrame(w, v) }
+
+func Dial(ctx context.Context) (*net.UnixConn, error) {
+	p, err := SocketPath(false)
+	if err != nil {
+		return nil, err
+	}
+	var st unix.Stat_t
+	if err := unix.Lstat(p, &st); err != nil {
+		return nil, err
+	}
+	if st.Mode&unix.S_IFMT != unix.S_IFSOCK || st.Mode&0777 != 0600 || st.Uid != uint32(os.Getuid()) {
+		return nil, errors.New("invalid cache socket ownership or mode")
+	}
+	d := net.Dialer{Timeout: Timeout}
+	c, err := d.DialContext(ctx, "unix", p)
+	if err != nil {
+		return nil, err
+	}
+	u := c.(*net.UnixConn)
+	if _, err := peer(u); err != nil {
+		closeQuietly(u)
+		return nil, err
+	}
+	return u, nil
+}
+
+type RequestHandler func(context.Context, *net.UnixConn, Request, string)
 
 func ownedDir(path string) error {
 	st, err := os.Lstat(path)
@@ -249,7 +289,7 @@ func alive(id string) bool {
 	return (lifecycle.Process{PID: pid, Start: parts[1]}).Alive()
 }
 
-func handle(c *net.UnixConn, s *cache.Store, log *trace.Logger) {
+func handle(ctx context.Context, c *net.UnixConn, s *cache.Store, log *trace.Logger, handler RequestHandler) {
 	defer closeQuietly(c)
 	if err := c.SetDeadline(time.Now().Add(Timeout)); err != nil {
 		return
@@ -264,6 +304,17 @@ func handle(c *net.UnixConn, s *cache.Store, log *trace.Logger) {
 		return
 	}
 	defer clear(req.Secret)
+	if req.Version == 2 && req.Op == "ask" && handler != nil {
+		who, err := caller(cred)
+		if err != nil {
+			return
+		}
+		if err := c.SetDeadline(time.Time{}); err != nil {
+			return
+		}
+		handler(ctx, c, req, who)
+		return
+	}
 	resp := Response{Version: 1}
 	defer func() {
 		defer clear(resp.Secret)
@@ -322,7 +373,11 @@ func handle(c *net.UnixConn, s *cache.Store, log *trace.Logger) {
 	log.Event("cache", "op", req.Op, "peer", cred.Pid, "token", resp.Token, "reason", resp.Reason)
 }
 
-func Serve(ctx context.Context, l *net.UnixListener, s *cache.Store, log *trace.Logger) error {
+func Serve(ctx context.Context, l *net.UnixListener, s *cache.Store, log *trace.Logger, handlers ...RequestHandler) error {
+	var handler RequestHandler
+	if len(handlers) > 0 {
+		handler = handlers[0]
+	}
 	defer s.Forget(nil)
 	stop := context.AfterFunc(ctx, func() { closeQuietly(l) })
 	defer stop()
@@ -358,7 +413,7 @@ func Serve(ctx context.Context, l *net.UnixListener, s *cache.Store, log *trace.
 		select {
 		case sem <- struct{}{}:
 			wg.Add(1)
-			go func() { defer wg.Done(); defer func() { <-sem }(); handle(c, s, log) }()
+			go func() { defer wg.Done(); defer func() { <-sem }(); handle(ctx, c, s, log, handler) }()
 		default:
 			closeQuietly(c)
 		}

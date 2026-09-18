@@ -14,6 +14,8 @@ with tempfile.TemporaryDirectory(prefix="gtkaskpass-wayland-") as runtime:
                GTKASKPASS_CACHE="off", GTKASKPASS_TRACE="metadata")
     env.pop("DISPLAY", None)
     with tempfile.TemporaryFile() as weston_log:
+        daemon = subprocess.Popen([os.environ["CACHE_BIN"], "serve", "--pin-verification", "off"], env=env,
+                                  stdout=subprocess.DEVNULL, stderr=weston_log)
         weston = subprocess.Popen(
             ["weston", "--backend=headless", "--renderer=pixman", "--shell=kiosk",
              "--no-config", "--socket=askpass-test"], env=env,
@@ -25,6 +27,10 @@ with tempfile.TemporaryDirectory(prefix="gtkaskpass-wayland-") as runtime:
                     weston_log.seek(0)
                     raise AssertionError(weston_log.read().decode())
                 time.sleep(0.02)
+            deadline = time.monotonic() + 5
+            while not pathlib.Path(runtime, "gtkaskpass-yubikey", "cache.sock").exists():
+                assert daemon.poll() is None and time.monotonic() < deadline
+                time.sleep(.02)
             for hint, expected in [("none", 0), ("", 1)]:
                 env["SSH_ASKPASS_PROMPT"] = hint
                 process = subprocess.Popen(
@@ -52,4 +58,6 @@ with tempfile.TemporaryDirectory(prefix="gtkaskpass-wayland-") as runtime:
         finally:
             weston.terminate()
             weston.wait(timeout=5)
+            daemon.terminate()
+            daemon.wait(timeout=5)
 print("Wayland notification and input cancellation passed")
