@@ -13,6 +13,23 @@
   checks, and development shells; `nix/module.nix` configures NixOS user services.
 - Project code and documentation are Apache-2.0, copyright Étienne Lafarge.
 
+## Third-party library selection
+
+- Before implementing a new capability, search GitHub/pkg.go.dev for existing
+  libraries that solve the problem. Compare credible alternatives before writing
+  custom parsing, protocol, integration, or infrastructure code.
+- Adopt a third-party library **if and only if it is well maintained** and fits
+  the requirement. Check releases and substantive recent commits, maintainer
+  responsiveness, tests/CI, compatibility, licensing, and dependency/security
+  burden. Stars or a recent automated commit alone are not evidence of maintenance.
+- Prefer maintained libraries over duplicating their functionality. Record the
+  choice and relevant tradeoffs; if no suitable maintained library exists, explain
+  why a small local implementation is preferable. Do not churn working dependencies
+  solely because another library is newer or fashionable.
+- Pin dependency versions/checksums, exercise the APIs we rely on, and update the
+  Nix vendor hash and package fileset when needed. A library must preserve the
+  project's secret-handling, bounded-resource, and protocol invariants.
+
 ## Build and check
 
 Use the locked Nix environment: the generated GTK bindings need newer native
@@ -98,6 +115,12 @@ nix flake check -L
 
 - Keep commits focused and inspect status/diff before staging; preserve unrelated
   user changes. Do not commit test credentials, build products, or trace logs.
+- Write descriptive commit messages: a concise imperative subject followed by
+  a substantive body explaining the problem, what changed, and why this approach
+  was chosen. Record relevant alternatives/tradeoffs, compatibility or migration
+  effects, and verification performed. Capture reasoning that future maintainers
+  and agents cannot recover from the diff alone; do not settle for a one-line
+  summary or pad the body with a mechanical list of edited files.
 - Every assisted commit needs an `Assisted-by:` Git trailer identifying the actual
   model used, e.g. `Assisted-by: OpenAI gpt-6-astra (opencode/gpt-6-astra)`.
 - Commit/push/tag/release only within the user's authorization. Do not amend shared

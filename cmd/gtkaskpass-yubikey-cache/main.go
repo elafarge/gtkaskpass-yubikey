@@ -5,8 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -15,120 +15,101 @@ import (
 
 	"github.com/elafarge/gtkaskpass-yubikey/internal/cache"
 	"github.com/elafarge/gtkaskpass-yubikey/internal/cacheipc"
+	"github.com/elafarge/gtkaskpass-yubikey/internal/config"
 	"github.com/elafarge/gtkaskpass-yubikey/internal/fido"
 	"github.com/elafarge/gtkaskpass-yubikey/internal/lifecycle"
 	"github.com/elafarge/gtkaskpass-yubikey/internal/preferences"
 	"github.com/elafarge/gtkaskpass-yubikey/internal/service"
 	"github.com/elafarge/gtkaskpass-yubikey/internal/touch"
 	"github.com/elafarge/gtkaskpass-yubikey/internal/trace"
+	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
 )
 
 func main() {
 	signal.Ignore(syscall.SIGPIPE)
-	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "gtkaskpass-yubikey-cache:", err)
+	root := newCommand(os.Stdout, os.Stderr, runService)
+	if err := root.Execute(); err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, "gtkaskpass-yubikey-cache:", err)
 		os.Exit(2)
 	}
 }
 
-func run(args []string) error {
-	if len(args) == 0 {
-		return errors.New("usage: gtkaskpass-yubikey-cache serve [--ttl 1h] [--pin-verification required|off] [--touch-monitor] [--trace] | devices | forget (--all | --fingerprint SHA256:... | --key PATH --kind passphrase|pin)")
+func newCommand(out, diagnostics io.Writer, serve func(context.Context, config.Settings) error) *cobra.Command {
+	root := &cobra.Command{Use: "gtkaskpass-yubikey-cache", Short: "SSH askpass request service and FIDO2 touch monitor", SilenceErrors: true, SilenceUsage: true}
+	root.SetOut(out)
+	root.SetErr(diagnostics)
+	var path string
+	root.PersistentFlags().StringVar(&path, "config", "", "service config file (default: $XDG_CONFIG_HOME/gtkaskpass-yubikey/config.{yaml,yml,toml,json})")
+	load := func(cmd *cobra.Command) (config.Settings, error) {
+		if cmd.Flags().Changed("config") && path == "" {
+			return config.Settings{}, errors.New("--config requires a nonempty path")
+		}
+		dir := ""
+		if path == "" {
+			var err error
+			dir, err = os.UserConfigDir()
+			if err != nil {
+				return config.Settings{}, err
+			}
+		}
+		cfg, _, err := config.Load(path, dir, cmd.Flags())
+		return cfg, err
 	}
-	f := flag.NewFlagSet(args[0], flag.ContinueOnError)
-	f.SetOutput(os.Stderr)
-	switch args[0] {
-	case "devices":
-		if len(args) != 1 {
-			return errors.New("devices takes no arguments")
-		}
-		devices, err := (fido.Backend{}).Discover(context.Background())
+	server := &cobra.Command{Use: "serve", Short: "Run the session service in the foreground", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := load(cmd)
 		if err != nil {
 			return err
 		}
-		return json.NewEncoder(os.Stdout).Encode(devices)
-	case "serve":
-		ttl := f.Duration("ttl", time.Hour, "absolute credential lifetime; 0 disables caching")
-		tracing := f.Bool("trace", false, "trace metadata to stderr")
-		verification := f.String("pin-verification", "required", "required or off (unverified compatibility mode)")
-		monitorTouch := f.Bool("touch-monitor", false, "passively monitor USB FIDO2 touch requests in this graphical session")
-		if err := f.Parse(args[1:]); err != nil {
-			return err
-		}
-		if *ttl < 0 || f.NArg() != 0 || (*verification != "required" && *verification != "off") {
-			return errors.New("invalid TTL or extra arguments")
-		}
-		if err := unix.Setrlimit(unix.RLIMIT_CORE, &unix.Rlimit{}); err != nil {
-			return err
-		}
-		unix.Umask(0077)
-		mode := "off"
-		if *tracing {
-			mode = "metadata"
-		}
-		log, _ := trace.New(mode, os.Stderr)
-		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
-		defer stop()
-		l, err := cacheipc.Listen()
-		if err != nil {
-			return err
-		}
-		store := cache.New(*ttl, lifecycle.BootTime)
-		executable, err := os.Executable()
-		if err != nil {
-			return err
-		}
-		configDir, err := os.UserConfigDir()
-		if err != nil {
-			return err
-		}
-		svc := &service.Service{Cache: store, Devices: fido.Backend{}, VerifyPIN: *verification == "required", Preferences: preferences.New(filepath.Join(configDir, "gtkaskpass-yubikey", "devices.json")), WorkerPath: filepath.Join(filepath.Dir(executable), "gtkaskpass-yubikey-ui")}
-		if *monitorTouch {
-			env := map[string]string{}
-			for _, k := range service.SessionKeys {
-				env[k] = os.Getenv(k)
+		return serve(cmd.Context(), cfg)
+	}}
+	config.Flags(server.Flags())
+	root.AddCommand(server)
+	configuration := &cobra.Command{Use: "config", Short: "Validate or display effective nonsecret service settings"}
+	for _, name := range []string{"check", "show"} {
+		command := &cobra.Command{Use: name, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := load(cmd)
+			if err != nil {
+				return err
 			}
-			popups := service.NewTouchPopups(svc.WorkerPath, env)
-			monitor := &touch.Monitor{Sink: popups, Diagnostic: func(message string) { _, _ = fmt.Fprintln(os.Stderr, "gtkaskpass:", message) }}
-			monitor.Event = func(d touch.Device, active bool) { log.Event("touch-state", "device", d.Path, "needed", active) }
-			svc.TouchMonitored = func() bool { return monitor.Covered() && popups.Available() }
-			monitorCtx, cancel := context.WithCancel(ctx)
-			doneMonitor, donePopups := make(chan struct{}), make(chan struct{})
-			go func() { defer close(donePopups); popups.Run(monitorCtx) }()
-			go func() { defer close(doneMonitor); monitor.Run(monitorCtx) }()
-			defer func() { cancel(); <-doneMonitor; <-donePopups }()
-			if !popups.Available() {
-				_, _ = fmt.Fprintln(os.Stderr, "gtkaskpass: no graphical session environment for touch popups")
+			if cmd.Name() == "check" {
+				_, err = fmt.Fprintln(cmd.OutOrStdout(), "Configuration is valid.")
+				return err
 			}
-		}
-		return cacheipc.Serve(ctx, l, store, log, svc.Handle)
-	case "forget":
-		all := f.Bool("all", false, "forget every key")
-		path := f.String("key", "", "key-file path")
-		kind := f.String("kind", "", "passphrase or pin")
-		fingerprint := f.String("fingerprint", "", "SHA256 fingerprint of an agent's FIDO key (PIN only)")
-		if err := f.Parse(args[1:]); err != nil {
+			encoder := json.NewEncoder(cmd.OutOrStdout())
+			encoder.SetIndent("", "  ")
+			return encoder.Encode(cfg)
+		}}
+		config.Flags(command.Flags())
+		configuration.AddCommand(command)
+	}
+	root.AddCommand(configuration)
+	root.AddCommand(&cobra.Command{Use: "devices", Short: "List public FIDO2 device metadata (does not test PINs)", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+		devices, err := (fido.Backend{}).Discover(cmd.Context())
+		if err != nil {
 			return err
 		}
-		if f.NArg() != 0 {
-			return errors.New("unexpected arguments")
-		}
+		return json.NewEncoder(cmd.OutOrStdout()).Encode(devices)
+	}})
+	var all bool
+	var key, kind, fingerprint string
+	forget := &cobra.Command{Use: "forget", Short: "Forget cached credentials without displaying them", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		req := cacheipc.Request{Op: "forget-all"}
-		if *all {
-			if *path != "" || *kind != "" || *fingerprint != "" {
-				return errors.New("--all cannot be combined with --key/--kind")
+		switch {
+		case all:
+			if key != "" || kind != "" || fingerprint != "" {
+				return errors.New("--all cannot be combined with --key, --kind, or --fingerprint")
 			}
-		} else if *fingerprint != "" {
-			k := cache.Key{Kind: "pin", Fingerprint: *fingerprint}
-			if *path != "" || *kind != "" || !k.AgentPIN() {
+		case fingerprint != "":
+			k := cache.Key{Kind: "pin", Fingerprint: fingerprint}
+			if key != "" || kind != "" || !k.AgentPIN() {
 				return errors.New("--fingerprint requires a canonical SHA256 fingerprint and cannot be combined with --key/--kind")
 			}
 			req.Op, req.Key = "forget", k
-		} else {
-			k := cache.Key{Path: *path, Kind: *kind}
+		default:
+			k := cache.Key{Path: key, Kind: kind}
 			if !k.Valid() {
-				return errors.New("specify --all or --key PATH --kind passphrase|pin")
+				return errors.New("specify --all, --fingerprint SHA256:..., or --key PATH --kind passphrase|pin")
 			}
 			p, err := filepath.Abs(k.Path)
 			if err != nil {
@@ -137,12 +118,70 @@ func run(args []string) error {
 			k.Path = p
 			req.Op, req.Key = "forget", k
 		}
-		_, err := cacheipc.Call(context.Background(), req)
+		_, err := cacheipc.Call(cmd.Context(), req)
 		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED) {
 			return nil
 		}
 		return err
-	default:
-		return errors.New("unknown subcommand")
+	}}
+	forget.Flags().BoolVar(&all, "all", false, "forget every credential")
+	forget.Flags().StringVar(&key, "key", "", "key-file path")
+	forget.Flags().StringVar(&kind, "kind", "", "passphrase or pin")
+	forget.Flags().StringVar(&fingerprint, "fingerprint", "", "SHA256 fingerprint of an agent FIDO key (PIN only)")
+	root.AddCommand(forget)
+	return root
+}
+
+func runService(parent context.Context, cfg config.Settings) error {
+	if err := cfg.Validate(); err != nil {
+		return err
 	}
+	ttl, err := time.ParseDuration(cfg.CacheTTL)
+	if err != nil {
+		return err
+	}
+	if err := unix.Setrlimit(unix.RLIMIT_CORE, &unix.Rlimit{}); err != nil {
+		return err
+	}
+	unix.Umask(0077)
+	mode := "off"
+	if cfg.Trace {
+		mode = "metadata"
+	}
+	log, _ := trace.New(mode, os.Stderr)
+	ctx, stop := signal.NotifyContext(parent, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+	defer stop()
+	executable, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return err
+	}
+	l, err := cacheipc.Listen()
+	if err != nil {
+		return err
+	}
+	store := cache.New(ttl, lifecycle.BootTime)
+	svc := &service.Service{Cache: store, Devices: fido.Backend{}, VerifyPIN: cfg.PINVerification == "required", Preferences: preferences.New(filepath.Join(configDir, "gtkaskpass-yubikey", "devices.json")), WorkerPath: filepath.Join(filepath.Dir(executable), "gtkaskpass-yubikey-ui")}
+	if cfg.TouchNotifications {
+		env := map[string]string{}
+		for _, k := range service.SessionKeys {
+			env[k] = os.Getenv(k)
+		}
+		popups := service.NewTouchPopups(svc.WorkerPath, env)
+		monitor := &touch.Monitor{Sink: popups, Diagnostic: func(message string) { _, _ = fmt.Fprintln(os.Stderr, "gtkaskpass:", message) }}
+		monitor.Event = func(d touch.Device, active bool) { log.Event("touch-state", "device", d.Path, "needed", active) }
+		svc.TouchMonitored = func() bool { return monitor.Covered() && popups.Available() }
+		monitorCtx, cancel := context.WithCancel(ctx)
+		doneMonitor, donePopups := make(chan struct{}), make(chan struct{})
+		go func() { defer close(donePopups); popups.Run(monitorCtx) }()
+		go func() { defer close(doneMonitor); monitor.Run(monitorCtx) }()
+		defer func() { cancel(); <-doneMonitor; <-donePopups }()
+		if !popups.Available() {
+			_, _ = fmt.Fprintln(os.Stderr, "gtkaskpass: no graphical session environment for touch popups")
+		}
+	}
+	return cacheipc.Serve(ctx, l, store, log, svc.Handle)
 }

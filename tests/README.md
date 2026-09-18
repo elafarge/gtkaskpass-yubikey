@@ -8,6 +8,7 @@
 | Go race detector | Concurrent core/controller/cache/IPC operations |
 | Service/device tests | Fake-backend PIN rejection/invalidation, re-verification, device binding, multiple-device confirmation, cancellation during verification, and persistent preference files |
 | golangci-lint | Standard Go correctness linters plus gofmt, including integration-tagged code |
+| Configuration tests | Cobra routing/help, Koanf YAML/TOML/JSON parsing, XDG discovery, case/type validation, CLI precedence, and real daemon startup from a file |
 | `checks.<system>.integration` | Installed GTK executable on X11: input, empty response, cancellation/window-close, confirmation, signals, parent death, simultaneous windows, cache hits, expiry, key-file changes, forgetting, daemon loss, broken trace pipe |
 | OpenSSH cases in integration | Real `ssh-add` wrong-answer retry, successful load, removal/re-add using cache, and cancellation, with an isolated agent and synthetic encrypted key |
 | Agent PIN cases in integration | Real `ssh-agent` PIN prompts for software-backed FIDO test keys, repeated signature verification, fingerprint forgetting, and cache reuse through a genuine SSH agent-forwarding channel |

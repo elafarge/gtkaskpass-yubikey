@@ -46,7 +46,10 @@ func TestMain(m *testing.M) {
 	if err := os.Setenv("XDG_RUNTIME_DIR", root); err != nil {
 		panic(err)
 	}
-	svc := exec.Command(daemon, "serve", "--pin-verification", "off")
+	if err := os.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "test-config")); err != nil {
+		panic(err)
+	}
+	svc := exec.Command(daemon, "serve", "--pin-verification", "off", "--touch-monitor=false")
 	svc.Stderr = os.Stderr
 	if err := svc.Start(); err != nil {
 		panic(err)
@@ -119,6 +122,8 @@ func env(overrides map[string]string) []string {
 	delete(m, "GTKASKPASS_CALLER")
 	m["GTKASKPASS_CACHE"] = "off"
 	m["GTKASKPASS_TRACE"] = "metadata"
+	// Never inherit the user's service configuration in disposable tests.
+	m["XDG_CONFIG_HOME"] = filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "test-config")
 	for k, v := range overrides {
 		m[k] = v
 	}
@@ -357,7 +362,7 @@ func cacheEnv(t *testing.T, ttl string) (map[string]string, *process) {
 		}
 	})
 	e := map[string]string{"XDG_RUNTIME_DIR": root, "GTKASKPASS_CACHE": "on"}
-	d := start(t, e, daemon, "serve", "--ttl", ttl, "--trace", "--pin-verification", "off")
+	d := start(t, e, daemon, "serve", "--ttl", ttl, "--trace", "--pin-verification", "off", "--touch-monitor=false")
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(filepath.Join(root, "gtkaskpass-yubikey", "cache.sock")); err == nil {

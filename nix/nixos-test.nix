@@ -1,17 +1,15 @@
 { pkgs, self, package }:
 pkgs.testers.runNixOSTest {
   name = "gtkaskpass-cache-service";
-  nodes.machine = { lib, ... }: {
+  nodes.machine = { ... }: {
     imports = [ self.nixosModules.default ];
-    services.gtkaskpass-yubikey = { enable = true; inherit package; cacheTTL = "2s"; };
+    services.gtkaskpass-yubikey = { enable = true; inherit package; cacheTTL = "2s"; trace = true; };
     services.dbus.enable = true;
     boot.kernelModules = [ "uhid" ];
     systemd.user.targets.test-desktop = {
       description = "Test graphical session owner";
       requires = [ "graphical-session.target" ];
     };
-    systemd.user.services.gtkaskpass-yubikey-cache.serviceConfig.ExecStart = lib.mkForce
-      "${package}/bin/gtkaskpass-yubikey-cache serve --ttl 2s --touch-monitor --trace";
     users.users.alice = { isNormalUser = true; uid = 1000; linger = true; };
     environment.systemPackages = [ pkgs.python3 ];
     virtualisation.memorySize = 1024;

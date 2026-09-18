@@ -121,6 +121,36 @@ the service's directory. PID reuse does not reuse a caller identity.
 - A completed request closes its worker before returning its result, preventing
   a stale window from being mistaken for a subsequent prompt.
 
+## Service configuration
+
+Cobra owns the service/control command tree; the askpass adapter's prompt-only
+interface has no CLI option parsing. Koanf loads exactly one explicitly selected
+file or automatically discovers `config.yaml`, `config.yml`, `config.toml`, or
+`config.json` in `$XDG_CONFIG_HOME/gtkaskpass-yubikey` (default `~/.config`). Multiple
+automatic candidates fail rather than depending on parser order. There is no
+automatic environment or system-wide file loading.
+
+Precedence is defaults, file values, then explicitly changed flags. Koanf's
+posflag provider maps the existing CLI names to case-sensitive configuration
+keys. Built-in parsers handle syntax; strict mapstructure decoding rejects
+unknown fields and weak type conversions. Null values, non-regular/oversized
+files, invalid durations, and unknown verification modes fail before the socket,
+hardware monitor, or UI is started. Configuration is bounded to 64 KiB.
+
+The schema contains `cacheTTL` (default `1h`), `pinVerification` (`required`),
+`touchNotifications` (`true`), and metadata-only `trace` (`false`). No credential
+or dynamic executable/path/worker injection settings are supported. `config
+check` and `config show` permit validation/inspection without starting the service.
+Settings load once at startup; applying edits requires a restart and clears the
+in-memory cache. Persistent public device preferences remain a separate file.
+
+The NixOS module generates JSON using `pkgs.formats.json` and supplies only
+`serve --config <store path>` instead of duplicating configuration in flags. This
+explicit file takes precedence over automatic user configuration, keeping NixOS
+policy deterministic. The standalone systemd unit runs `serve`, letting each user
+configure the same behavior through their XDG file. See `docs/CONFIGURATION.md`
+and `docs/DEPENDENCIES.md` for the schema and dependency-selection tradeoffs.
+
 ## Credential cache
 
 The cache owns byte buffers in memory. No credential files, dumps, or daemon

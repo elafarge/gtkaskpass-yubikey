@@ -3,6 +3,9 @@
 let
   cfg = config.services.gtkaskpass-yubikey;
   executable = lib.getExe cfg.package;
+  configFile = (pkgs.formats.json { }).generate "gtkaskpass-yubikey-config.json" {
+    inherit (cfg) cacheTTL pinVerification touchNotifications trace;
+  };
 in {
   options.services.gtkaskpass-yubikey = {
     enable = lib.mkEnableOption "GTK4 SSH askpass and its per-user credential cache";
@@ -27,6 +30,11 @@ in {
       default = true;
       description = "Passively monitor USB FIDO2 user-presence requests and show device-level popups in the service's graphical session.";
     };
+    trace = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Enable metadata-only service diagnostics; credentials are never traced by the service.";
+    };
   };
   config = lib.mkIf cfg.enable {
     programs.ssh.enableAskPassword = true;
@@ -38,7 +46,7 @@ in {
       partOf = [ "graphical-session.target" ];
       after = [ "graphical-session-pre.target" ];
       serviceConfig = {
-        ExecStart = "${cfg.package}/bin/gtkaskpass-yubikey-cache serve --ttl ${cfg.cacheTTL} --pin-verification ${cfg.pinVerification}" + lib.optionalString cfg.touchNotifications " --touch-monitor";
+        ExecStart = "${cfg.package}/bin/gtkaskpass-yubikey-cache serve --config ${configFile}";
         Restart = "on-failure";
         RuntimeDirectory = "gtkaskpass-yubikey";
         RuntimeDirectoryMode = "0700";

@@ -1,0 +1,6 @@
+# Service configuration, not a credential store. Restart the service after edits.
+# Copy to ~/.config/gtkaskpass-yubikey/config.yaml for standalone installations.
+cacheTTL: 1h
+pinVerification: required
+touchNotifications: true
+trace: false

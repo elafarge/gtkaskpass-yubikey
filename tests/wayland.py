@@ -14,7 +14,8 @@ with tempfile.TemporaryDirectory(prefix="gtkaskpass-wayland-") as runtime:
                GTKASKPASS_CACHE="off", GTKASKPASS_TRACE="metadata")
     env.pop("DISPLAY", None)
     with tempfile.TemporaryFile() as weston_log:
-        daemon = subprocess.Popen([os.environ["CACHE_BIN"], "serve", "--pin-verification", "off"], env=env,
+        env["XDG_CONFIG_HOME"] = str(pathlib.Path(runtime, "test-config"))
+        daemon = subprocess.Popen([os.environ["CACHE_BIN"], "serve", "--pin-verification", "off", "--touch-monitor=false"], env=env,
                                   stdout=subprocess.DEVNULL, stderr=weston_log)
         weston = subprocess.Popen(
             ["weston", "--backend=headless", "--renderer=pixman", "--shell=kiosk",

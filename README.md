@@ -22,6 +22,7 @@ inputs.gtkaskpass-yubikey.url = "github:elafarge/gtkaskpass-yubikey";
     cacheTTL = "1h";
     pinVerification = "required";
     touchNotifications = true;
+    trace = false;
   };
 }
 ```
@@ -38,7 +39,7 @@ For manual testing or non-NixOS Linux:
 
 ```sh
 nix build
-./result/bin/gtkaskpass-yubikey-cache serve --ttl 1h --touch-monitor
+./result/bin/gtkaskpass-yubikey-cache serve
 ```
 
 In another terminal in the graphical session:
@@ -76,6 +77,26 @@ The executables are:
 
 Upgrade all three together and restart the service after upgrades. Restarting
 clears in-memory credentials. Do not invoke the UI worker directly.
+
+## Configuration file
+
+On a standalone installation, create
+`~/.config/gtkaskpass-yubikey/config.yaml` (or `.toml`/`.json`):
+
+```yaml
+cacheTTL: 1h
+pinVerification: required
+touchNotifications: true
+trace: false
+```
+
+Validate with `gtkaskpass-yubikey-cache config check`, then restart the service.
+`config show` prints effective settings; explicitly supplied CLI flags override
+file values. Cobra handles commands/flags and Koanf handles configuration.
+The NixOS module generates the same configuration schema in a Nix store file,
+selected explicitly with `--config` so declarative settings remain authoritative.
+See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for formats, precedence, and
+examples, and [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) for the library choice.
 
 ## SSH agents and forwarding
 
@@ -199,8 +220,8 @@ notifications are unaffected.
 
 Hotplug and device ACL changes are picked up within about a second. This monitor
 interprets standard FIDO2 USB keepalives; legacy U2F polling, NFC, and Bluetooth
-are not equivalent signals. Set `touchNotifications = false` (or omit
-`--touch-monitor` for a manual service) to use only OpenSSH-driven notifications.
+are not equivalent signals. Set `touchNotifications = false` (or pass
+`--touch-monitor=false` for a manual service) to use only OpenSSH-driven notifications.
 
 ## Troubleshooting
 

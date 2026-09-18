@@ -4,7 +4,7 @@ PartOf=graphical-session.target
 After=graphical-session-pre.target
 
 [Service]
-ExecStart=@bindir@/gtkaskpass-yubikey-cache serve --ttl 1h --touch-monitor
+ExecStart=@bindir@/gtkaskpass-yubikey-cache serve
 Restart=on-failure
 RuntimeDirectory=gtkaskpass-yubikey
 RuntimeDirectoryMode=0700
