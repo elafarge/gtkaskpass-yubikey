@@ -116,8 +116,13 @@ touch and PIN lifecycles.
 
 - Default lifetime is **one hour from storing a manually submitted answer**.
   Reads do not extend it; suspended time counts toward expiry.
-- Passphrases and FIDO PINs have separate entries per canonical key-file path.
-  Replacing or modifying the file invalidates its entry.
+- File-based passphrases and FIDO PINs have separate entries per canonical
+  key-file path. Replacing or modifying the file invalidates its entry.
+- OpenSSH agent PIN prompts are cached by the full `SHA256:` public-key
+  fingerprint. Local SSH and forwarded-agent operations (such as Git on a
+  server) reuse that entry, even though the same agent process handles them.
+  Both `Enter PIN for ...` and `Enter PIN and confirm user presence for ...`
+  are supported. No custom SSH client or direct-signing workaround is needed.
 - A cache hit returns the answer immediately, without opening a dialog.
 - On an eligible miss, the input window offers a checked **Remember for …** box.
 - Unknown/ambiguous prompts, account passwords, confirmations, empty answers,
@@ -125,7 +130,10 @@ touch and PIN lifecycles.
   uncached because their annotation is ambiguous with a filename. Paths at
   OpenSSH's known truncation limits are also uncached.
 - One YubiKey containing multiple SSH keys has one PIN entry per SSH key, not a
-  device-wide entry. The key file must be a regular file owned by the current user.
+  device-wide entry. For file-based prompts, the key file must be a regular file
+  owned by the current user. Agent fingerprints need no local key file; resident
+  keys loaded directly into the agent also work. File-based and fingerprint-based
+  entries are separate: switching signing modes may require entering the PIN once.
 - An unavailable daemon falls back to ordinary input. Trace metadata explains
   ineligible prompts and cache decisions.
 
@@ -134,6 +142,7 @@ Forget one entry or all entries:
 ```sh
 gtkaskpass-yubikey-cache forget --key ~/.ssh/id_ed25519 --kind passphrase
 gtkaskpass-yubikey-cache forget --key ~/.ssh/id_ed25519_sk --kind pin
+gtkaskpass-yubikey-cache forget --fingerprint 'SHA256:YOUR_KEY_FINGERPRINT'
 gtkaskpass-yubikey-cache forget --all
 ```
 
@@ -146,12 +155,21 @@ Bypass lookup **and storage** for one command:
 GTKASKPASS_CACHE=off SSH_ASKPASS_REQUIRE=force ssh user@host
 ```
 
+Get an agent key's fingerprint with `ssh-add -l`. The fingerprint itself is public
+metadata, not the PIN. The `--fingerprint` option is exclusive with `--key/--kind`.
+
 OpenSSH never tells askpass whether an answer was accepted. The daemon caches
-submitted **candidates**. If the same caller requests the same key again, the
-helper treats that as a retry and prompts instead of replaying the answer. A
-long-lived caller may therefore prompt more often. If a caller exits after a
-rejected PIN without retrying, explicitly forget that entry before trying again;
-the helper cannot infer that rejection from caller exit or a touch notification.
+submitted **candidates**. For file-based prompts, a repeated request from the same
+caller is treated as a retry and bypasses the cache. Fingerprint-based agent PIN
+requests are different: OpenSSH's agent asks at most once per signing operation,
+so subsequent prompts from the persistent agent are independent operations and
+can reuse the cache. **If a PIN is rejected, forget its fingerprint entry before
+trying again.** The helper cannot infer rejection from caller exit or a touch
+notification, and it never retries or verifies a PIN against hardware itself.
+
+`GTKASKPASS_CACHE=off` must be in the agent's own environment to bypass cache for
+agent-originated prompts; setting it in a remote Git process has no effect on the
+local agent. `forget --fingerprint` or `forget --all` works without restarting it.
 
 The daemon is shared by processes of the same UID. Entries use owned byte buffers
 that are cleared on expiry/replacement; there is no persistent credential file.

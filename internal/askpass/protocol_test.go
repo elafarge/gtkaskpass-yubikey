@@ -2,6 +2,7 @@ package askpass
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"io"
 	"strings"
@@ -32,6 +33,35 @@ func TestModes(t *testing.T) {
 	}
 	if r, _ := Parse(nil, ""); r.Prompt == "" {
 		t.Fatal("no default")
+	}
+}
+
+func TestAgentPINPrompts(t *testing.T) {
+	fp := "SHA256:" + base64.RawStdEncoding.EncodeToString(make([]byte, 32))
+	for _, prefix := range []string{"Enter PIN for ", "Enter PIN and confirm user presence for "} {
+		for _, alg := range []string{"ED25519-SK", "ECDSA-SK"} {
+			prompt := prefix + alg + " key " + fp + ": "
+			r, err := Parse([]string{prompt}, "")
+			if err != nil || r.Title != "Security key PIN" {
+				t.Fatal(r, err)
+			}
+			k, ok := r.CacheKey()
+			if !ok || k.Kind != "pin" || k.Path != "" || k.Fingerprint != fp {
+				t.Fatal(k, ok)
+			}
+			for _, hint := range []string{"none", "confirm"} {
+				r, _ = Parse([]string{prompt}, hint)
+				if _, ok := r.CacheKey(); ok {
+					t.Fatal("hint precedence lost")
+				}
+			}
+		}
+	}
+	for _, value := range []string{"SHA256:short", fp + "=", "MD5:ab:cd", fp[:len(fp)-1] + "B"} {
+		r, _ := Parse([]string{"Enter PIN for ED25519-SK key " + value + ": "}, "")
+		if _, ok := r.CacheKey(); ok {
+			t.Fatal("malformed fingerprint accepted", value)
+		}
 	}
 }
 

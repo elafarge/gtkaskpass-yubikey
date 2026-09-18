@@ -66,14 +66,14 @@ func (a App) Run(ctx context.Context, args []string) (code int) {
 	var token uint64
 	var ttl time.Duration
 	if k, ok := req.CacheKey(); ok && a.Getenv("GTKASKPASS_CACHE") != "off" && a.CacheCall != nil {
-		if id, err := cache.Resolve(cache.Key{Path: k.Path, Kind: k.Kind}); err == nil {
+		if id, err := cache.Resolve(cache.Key{Path: k.Path, Kind: k.Kind, Fingerprint: k.Fingerprint}); err == nil {
 			key = id.Key
 			res, err := a.CacheCall(ctx, cacheipc.Request{Op: "begin", Key: key})
 			if err != nil {
 				a.diagnostic("gtkaskpass-yubikey: cache unavailable; using input dialog")
 				log.Event("cache-fallback", "error", err.Error())
 			} else {
-				log.Event("cache", "path", key.Path, "kind", key.Kind, "reason", res.Reason, "token", res.Token)
+				log.Event("cache", "path", key.Path, "fingerprint", key.Fingerprint, "kind", key.Kind, "reason", res.Reason, "token", res.Token)
 				if len(res.Secret) > 0 {
 					defer clear(res.Secret)
 					return a.respond(ctx, req, string(res.Secret), log)

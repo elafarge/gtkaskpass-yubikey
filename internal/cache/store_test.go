@@ -12,7 +12,7 @@ import (
 func TestExpiryRetryAndGenerations(t *testing.T) {
 	now := time.Duration(0)
 	s := New(time.Hour, func() time.Duration { return now })
-	id := Identity{Key{"/key", "pin"}, "v1"}
+	id := Identity{Key{Path: "/key", Kind: "pin"}, "v1"}
 	l := s.Begin(id, "a")
 	if !s.Commit(l.Token, id, "a", []byte("123")) {
 		t.Fatal("commit")
@@ -58,7 +58,7 @@ func TestExpiryRetryAndGenerations(t *testing.T) {
 
 func TestForgetAndConcurrentStores(t *testing.T) {
 	s := New(time.Hour, func() time.Duration { return 0 })
-	id := Identity{Key{"/key", "passphrase"}, "v1"}
+	id := Identity{Key{Path: "/key", Kind: "passphrase"}, "v1"}
 	a, b := s.Begin(id, "a"), s.Begin(id, "b")
 	if !s.Commit(a.Token, id, "a", []byte("one")) || s.Commit(b.Token, id, "b", []byte("two")) {
 		t.Fatal("stale store")
@@ -90,7 +90,7 @@ func TestForgetAndConcurrentStores(t *testing.T) {
 
 func TestNamespacesDisableAndLimits(t *testing.T) {
 	s := New(0, func() time.Duration { return 0 })
-	id := Identity{Key{"/key", "pin"}, "v1"}
+	id := Identity{Key{Path: "/key", Kind: "pin"}, "v1"}
 	if l := s.Begin(id, "a"); l.Token != 0 || l.TTL != 0 {
 		t.Fatal(l)
 	}
@@ -118,7 +118,7 @@ func TestIdentity(t *testing.T) {
 	if err := os.WriteFile(p, []byte("test"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	a, err := Resolve(Key{p, "pin"})
+	a, err := Resolve(Key{Path: p, Kind: "pin"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,14 +126,14 @@ func TestIdentity(t *testing.T) {
 	if err := os.Symlink(p, link); err != nil {
 		t.Fatal(err)
 	}
-	b, err := Resolve(Key{link, "pin"})
+	b, err := Resolve(Key{Path: link, Kind: "pin"})
 	if err != nil || a != b {
 		t.Fatal(a, b, err)
 	}
 	if err := os.WriteFile(p, []byte("changed"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	b, _ = Resolve(Key{p, "pin"})
+	b, _ = Resolve(Key{Path: p, Kind: "pin"})
 	if a == b {
 		t.Fatal("modification missed")
 	}

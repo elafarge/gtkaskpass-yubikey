@@ -9,6 +9,7 @@
 | golangci-lint | Standard Go correctness linters plus gofmt, including integration-tagged code |
 | `checks.<system>.integration` | Installed GTK executable on X11: input, empty response, cancellation/window-close, confirmation, signals, parent death, simultaneous windows, cache hits, expiry, key-file changes, forgetting, daemon loss, broken trace pipe |
 | OpenSSH cases in integration | Real `ssh-add` wrong-answer retry, successful load, removal/re-add using cache, and cancellation, with an isolated agent and synthetic encrypted key |
+| Agent PIN cases in integration | Real `ssh-agent` PIN prompts for software-backed FIDO test keys, repeated signature verification, fingerprint forgetting, and cache reuse through a genuine SSH agent-forwarding channel |
 | `checks.<system>.wayland` | Installed executable on a real headless Weston compositor; notification and input cancellation |
 | `checks.<system>.nixos` | Real systemd user socket activation, configured TTL, expiry, restart clearing, concurrent clients, and socket ownership/mode in a NixOS VM |
 
@@ -16,6 +17,15 @@ The GTK suite runs under a private D-Bus session, Xvfb, and Openbox. It does not
 use the user's SSH agent or configuration. Its Go parent harness models
 independent OpenSSH callers; it launches the normal binary without injecting
 answers into the application. Answers are entered through xdotool.
+
+`scripts/integration.sh` builds `tests/sk-provider/provider.c` into a temporary
+shared library using a C compiler, pkg-config, and OpenSSL. This software FIDO
+fixture requires the synthetic PIN `integration-pin`; it never opens a physical
+token. The real agent loads it using an explicit test-only provider allowlist.
+`tests/forwarded-agent.py` runs a local Paramiko server for the forwarding case.
+Neither fixture is installed in the application package. The Nix shell/check
+provide all these test dependencies. `SK_TEST_PROVIDER` may select an already
+built copy of this fixture.
 
 Run all checks with `nix flake check -L`. Run individual installed-package checks:
 
@@ -70,6 +80,12 @@ identity authorized on a test SSH server:
 7. Repeat with the touch-only identity, without the device, and with concurrent
    independent SSH connections. Operation failure must close the notification
    without claiming successful authentication.
+8. For the agent path, load the disposable FIDO key into an isolated agent and
+   configure that agent's `SSH_ASKPASS` before startup. Connect using the agent,
+   then request a signature through a forwarded agent on the test server. The
+   first agent PIN prompt should offer remembering; subsequent operations for
+   the same fingerprint should reuse it. Forget the fingerprint and verify that
+   input is requested again. Hardware touch is still owned by the token/provider.
 
 The software-key integration tests cover wrong-answer retries without consuming
 physical authenticator PIN attempts. A failed PIN operation that does not retry

@@ -62,10 +62,15 @@ nix flake check -L
 - Keep all retained credentials in memory. No secret files, argv, environment
   transport, daemon log payloads, or command to dump cached values.
 - Separate PINs and passphrases per canonical key file and metadata version.
-  Unknown/ambiguous prompts and non-key credentials remain uncached.
+  Agent PINs use a separate canonical SHA256-fingerprint namespace; do not treat
+  an agent fingerprint as a filesystem path. Unknown/ambiguous prompts and
+  non-key credentials remain uncached.
 - TTL defaults to one hour, is absolute, and includes suspend. Hits never refresh it.
 - Cache responses are candidates, not validated credentials. Preserve same-caller
-  retry bypass and generation-checked stores/invalidations. Concurrent or forgotten
+  retry bypass for file-based requests. Agent fingerprint prompts permit reuse
+  across operations from the same agent (OpenSSH asks once per signing operation).
+  Agent failures require explicit forgetting, never inferred validation. Preserve
+  generation-checked stores/invalidations. Concurrent or forgotten
   entries must not be overwritten/resurrected by a stale request.
 - Validate Unix socket/directory ownership and modes, check peer UID, bound frame
   and cache sizes, and keep IPC deadlines. Cache failures fall back to input.

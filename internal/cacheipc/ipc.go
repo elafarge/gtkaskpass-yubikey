@@ -282,7 +282,7 @@ func handle(c *net.UnixConn, s *cache.Store, log *trace.Logger) {
 			resp.Error = "caller"
 			return
 		}
-		if !filepath.IsAbs(req.Key.Path) {
+		if !req.Key.AgentPIN() && !filepath.IsAbs(req.Key.Path) {
 			resp.Error = "path"
 			return
 		}
@@ -300,12 +300,14 @@ func handle(c *net.UnixConn, s *cache.Store, log *trace.Logger) {
 			resp.Reason = "stale"
 		}
 	case "forget":
-		if !req.Key.Valid() || !filepath.IsAbs(req.Key.Path) {
+		if !req.Key.Valid() || (!req.Key.AgentPIN() && !filepath.IsAbs(req.Key.Path)) {
 			resp.Error = "key"
 			return
 		}
 		k := req.Key
-		k.Path = filepath.Clean(k.Path)
+		if !k.AgentPIN() {
+			k.Path = filepath.Clean(k.Path)
+		}
 		s.Forget(&k)
 		if id, err := cache.Resolve(k); err == nil {
 			s.Forget(&id.Key)

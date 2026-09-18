@@ -29,7 +29,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: gtkaskpass-yubikey-cache serve [--ttl 1h] [--trace] | forget (--all | --key PATH --kind passphrase|pin)")
+		return errors.New("usage: gtkaskpass-yubikey-cache serve [--ttl 1h] [--trace] | forget (--all | --fingerprint SHA256:... | --key PATH --kind passphrase|pin)")
 	}
 	f := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	f.SetOutput(os.Stderr)
@@ -63,6 +63,7 @@ func run(args []string) error {
 		all := f.Bool("all", false, "forget every key")
 		path := f.String("key", "", "key-file path")
 		kind := f.String("kind", "", "passphrase or pin")
+		fingerprint := f.String("fingerprint", "", "SHA256 fingerprint of an agent's FIDO key (PIN only)")
 		if err := f.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -71,9 +72,15 @@ func run(args []string) error {
 		}
 		req := cacheipc.Request{Op: "forget-all"}
 		if *all {
-			if *path != "" || *kind != "" {
+			if *path != "" || *kind != "" || *fingerprint != "" {
 				return errors.New("--all cannot be combined with --key/--kind")
 			}
+		} else if *fingerprint != "" {
+			k := cache.Key{Kind: "pin", Fingerprint: *fingerprint}
+			if *path != "" || *kind != "" || !k.AgentPIN() {
+				return errors.New("--fingerprint requires a canonical SHA256 fingerprint and cannot be combined with --key/--kind")
+			}
+			req.Op, req.Key = "forget", k
 		} else {
 			k := cache.Key{Path: *path, Kind: *kind}
 			if !k.Valid() {

@@ -43,12 +43,13 @@
             touch "$out"
           '';
           integration = pkgs.runCommand "gtkaskpass-integration" {
-            nativeBuildInputs = with pkgs; [ go dbus xvfb-run xdotool openbox openssh ];
+            nativeBuildInputs = with pkgs; [ go dbus xvfb-run xdotool openbox openssh stdenv.cc pkg-config (python3.withPackages (p: [ p.paramiko ])) ];
+            buildInputs = [ pkgs.openssl ];
           } ''
             cp -r ${pkgs.lib.fileset.toSource {
               root = ./.;
               fileset = pkgs.lib.fileset.unions [
-                ./go.mod ./go.sum ./tests/integration
+                ./go.mod ./go.sum ./tests/integration ./tests/sk-provider ./tests/forwarded-agent.py
                 ./scripts/integration.sh ./tests/session.conf
               ];
             }} source
@@ -80,11 +81,11 @@
           default = pkgs.mkShell {
             nativeBuildInputs = with pkgs; [
               go pkg-config gobject-introspection wrapGAppsHook4
-              dbus xvfb-run xdotool openbox openssh python3 weston
+              dbus xvfb-run xdotool openbox openssh (python3.withPackages (p: [ p.paramiko ])) weston
               golangci-lint actionlint shellcheck
               jq zstd
             ];
-            buildInputs = with pkgs; [ gtk4 ];
+            buildInputs = with pkgs; [ gtk4 openssl ];
             shellHook = ''
               export GSETTINGS_SCHEMA_DIR=${pkgs.gtk4}/share/gsettings-schemas/${pkgs.gtk4.name}/glib-2.0/schemas
             '';

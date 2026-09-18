@@ -68,7 +68,12 @@ func (s *Store) Begin(id Identity, caller string) Lookup {
 	}
 	sk := seenKey{caller, id.Key}
 	previous, retry := s.seen[sk]
-	if (!retry && len(s.seen) >= MaxCallers) || len(s.tickets) >= MaxTickets {
+	// OpenSSH ssh-agent asks for a PIN at most once per signing operation.
+	// Another fingerprint prompt from that long-lived caller is a new operation,
+	// not a same-operation retry. File-based requests retain retry protection.
+	trackRetry := !id.AgentPIN()
+	retry = retry && trackRetry
+	if (trackRetry && !retry && len(s.seen) >= MaxCallers) || len(s.tickets) >= MaxTickets {
 		r.Reason = "capacity"
 		return r
 	}
@@ -93,12 +98,16 @@ func (s *Store) Begin(id Identity, caller string) Lookup {
 		}
 		r.Reason = "retry"
 	} else if len(e.secret) > 0 {
-		s.seen[sk] = e.generation
+		if trackRetry {
+			s.seen[sk] = e.generation
+		}
 		r.Secret = append([]byte(nil), e.secret...)
 		r.Reason = "hit"
 		return r
 	}
-	s.seen[sk] = 0 // reserve retry tracking even if the dialog is cancelled
+	if trackRetry {
+		s.seen[sk] = 0
+	} // reserve retry tracking even if the dialog is cancelled
 	r.Token, r.TTL = s.next(), s.ttl
 	s.tickets[r.Token] = ticket{id, e.generation, caller, s.now() + TicketLifetime}
 	return r
@@ -122,7 +131,9 @@ func (s *Store) Commit(token uint64, id Identity, caller string, secret []byte) 
 	s.erase(e)
 	e.secret = append([]byte(nil), secret...)
 	e.expires = s.now() + s.ttl
-	s.seen[seenKey{caller, id.Key}] = e.generation
+	if !id.AgentPIN() {
+		s.seen[seenKey{caller, id.Key}] = e.generation
+	}
 	return true
 }
 

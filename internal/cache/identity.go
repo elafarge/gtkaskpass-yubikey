@@ -6,24 +6,35 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/elafarge/gtkaskpass-yubikey/internal/askpass"
 	"golang.org/x/sys/unix"
 )
 
 type Key struct {
-	Path string `json:"path"`
-	Kind string `json:"kind"`
+	Path        string `json:"path"`
+	Kind        string `json:"kind"`
+	Fingerprint string `json:"fingerprint,omitempty"`
 }
 type Identity struct {
 	Key
 	Stamp string
 }
 
-func (k Key) Valid() bool { return k.Path != "" && (k.Kind == "passphrase" || k.Kind == "pin") }
+func (k Key) AgentPIN() bool {
+	return k.Kind == "pin" && k.Path == "" && askpass.ValidFingerprint(k.Fingerprint)
+}
+
+func (k Key) Valid() bool {
+	return k.AgentPIN() || (k.Fingerprint == "" && k.Path != "" && (k.Kind == "passphrase" || k.Kind == "pin"))
+}
 
 // Resolve uses metadata only; it never opens or reads private-key contents.
 func Resolve(k Key) (Identity, error) {
 	if !k.Valid() {
 		return Identity{}, fmt.Errorf("invalid cache key")
+	}
+	if k.AgentPIN() {
+		return Identity{Key: k}, nil
 	}
 	p, err := filepath.Abs(k.Path)
 	if err != nil {

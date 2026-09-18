@@ -2,6 +2,7 @@
 package askpass
 
 import (
+	"encoding/base64"
 	"errors"
 	"io"
 	"regexp"
@@ -45,7 +46,7 @@ func Parse(args []string, hint string) (Request, error) {
 		}
 	case hint == "confirm":
 		r.Mode, r.Title = Confirm, "SSH confirmation"
-	case strings.HasPrefix(prompt, "Enter PIN for "):
+	case strings.HasPrefix(prompt, "Enter PIN for "), strings.HasPrefix(prompt, "Enter PIN and confirm user presence for "):
 		r.Title = "Security key PIN"
 	case strings.HasPrefix(prompt, "Enter passphrase"), strings.HasPrefix(prompt, "Bad passphrase"), len(args) == 0:
 		r.Title = "SSH passphrase"
@@ -77,9 +78,20 @@ func WriteResponse(w io.Writer, value string) (int, error) {
 	return n, err
 }
 
-type Key struct{ Path, Kind string }
+type Key struct{ Path, Kind, Fingerprint string }
 
 var pinPrompt = regexp.MustCompile(`^Enter PIN for (?:ED25519-SK|ECDSA-SK) key (.+): ?$`)
+var agentPINPrompt = regexp.MustCompile(`^Enter PIN(?: and confirm user presence)? for (?:ED25519-SK|ECDSA-SK) key (SHA256:[A-Za-z0-9+/]{43}): ?$`)
+
+// ValidFingerprint accepts canonical OpenSSH SHA-256 public-key fingerprints.
+func ValidFingerprint(value string) bool {
+	encoded, ok := strings.CutPrefix(value, "SHA256:")
+	if !ok {
+		return false
+	}
+	digest, err := base64.RawStdEncoding.Strict().DecodeString(encoded)
+	return err == nil && len(digest) == 32 && base64.RawStdEncoding.EncodeToString(digest) == encoded
+}
 
 // CacheKey recognizes only key-specific OpenSSH formats. The returned path still
 // needs filesystem resolution and validation before use as a cache identity.
@@ -88,10 +100,13 @@ func (r Request) CacheKey() (Key, bool) {
 		return Key{}, false
 	}
 	p := strings.TrimSuffix(r.Prompt, " ")
+	if m := agentPINPrompt.FindStringSubmatch(r.Prompt); m != nil {
+		return Key{Kind: "pin", Fingerprint: m[1]}, ValidFingerprint(m[1])
+	}
 	if strings.HasPrefix(p, "Enter passphrase for key '") && strings.HasSuffix(p, "':") {
 		path := strings.TrimSuffix(strings.TrimPrefix(p, "Enter passphrase for key '"), "':")
 		// ssh uses %.100s; a 100-byte path might have been truncated.
-		return Key{path, "passphrase"}, path != "" && len(path) < 100
+		return Key{Path: path, Kind: "passphrase"}, path != "" && len(path) < 100
 	}
 	for _, prefix := range []string{"Enter passphrase for ", "Bad passphrase, try again for "} {
 		if strings.HasPrefix(p, prefix) && strings.HasSuffix(p, ":") && len(r.Prompt) < 1023 {
@@ -100,11 +115,15 @@ func (r Request) CacheKey() (Key, bool) {
 			if strings.HasSuffix(path, " (will confirm each use)") || path == "(stdin)" || path == "PKCS#11" {
 				return Key{}, false
 			}
-			return Key{path, "passphrase"}, path != ""
+			return Key{Path: path, Kind: "passphrase"}, path != ""
 		}
 	}
 	if m := pinPrompt.FindStringSubmatch(r.Prompt); m != nil {
-		return Key{m[1], "pin"}, true
+		// A malformed fingerprint must not be reinterpreted as a relative path.
+		if strings.HasPrefix(m[1], "SHA256:") || strings.HasPrefix(m[1], "MD5:") {
+			return Key{}, false
+		}
+		return Key{Path: m[1], Kind: "pin"}, true
 	}
 	return Key{}, false
 }

@@ -259,7 +259,7 @@ response. The daemon receives no signing requests and requires no USB access.
 - Enable reuse of both local private-key passphrases and FIDO PINs. Separate the
   two credential kinds even when they refer to the same key file.
 - Cache only recognized OpenSSH key-specific input prompts carrying an
-  unambiguous local key-file path, including the supported `ssh` and `ssh-add`
+  unambiguous local key-file path or agent SHA256 fingerprint. File prompts include the supported `ssh` and `ssh-add`
   passphrase formats and `Enter PIN for <type> key <path>:`. Pin exact formats in
   tests against the OpenSSH version used in integration tests, including retry
   wording such as `Bad passphrase, try again for <path>:` for `ssh-add`.
@@ -279,6 +279,13 @@ response. The daemon receives no signing requests and requires no USB access.
   linked reliably may have separate entries.
 - Scope a PIN to the requested SSH key, even if several keys live on one YubiKey.
   Askpass cannot reliably identify the physical device or its shared PIN domain.
+- Agent requests use a separate `(pin, SHA256 fingerprint)` namespace. Accept
+  only canonical unpadded base64 encodings of exactly 32 digest bytes from
+  `Enter PIN [and confirm user presence ]for ED25519-SK|ECDSA-SK key SHA256:...:`.
+  The fingerprint is never interpreted as a file path. The helper and daemon
+  both validate it; the protocol explicitly distinguishes path and fingerprint.
+  Resident keys need no local file. File-based and agent entries are not merged
+  by guessing filenames or scanning private keys.
 - Never cache generic SSH account passwords, keyboard-interactive answers,
   host-key approvals, empty responses, cancellations, or touch notifications.
   Unknown prompts still work through the ordinary uncached input path.
@@ -317,13 +324,21 @@ caller using the helper's parent PID and process start time, checked against the
 connected helper's Linux process metadata; a reused PID is a different caller.
 If this identity cannot be established, bypass caching for the request.
 
-If that caller asks for the same key/kind again, treat it conservatively as a
+For file-based requests, if that caller asks for the same key/kind again, treat it conservatively as a
 retry: bypass the cache and show the input window. Invalidate the previously
 supplied generation if it is still current. A newer entry from another caller
 must not be deleted by an older retry. Repeated requests in this caller remain
 interactive; a long-lived caller can consequently prompt more often than
 separate `ssh` processes. This trades some reuse for avoiding a rejected-answer
 loop when no transaction/result information exists.
+
+For agent fingerprint prompts, OpenSSH asks for a PIN at most once per signing
+operation; later requests from the same long-lived agent are separate operations.
+They may reuse the cached candidate, including forwarded-agent signing requests.
+Do not record these operations in the file-based retry map. Submission leases,
+generation checks, size bounds, and absolute TTL still apply. The agent owns
+hardware verification and touch. An incorrect cached PIN must be explicitly
+forgotten; never infer validation or rejection from notifier/caller termination.
 
 A caller can exit after rejecting a PIN without requesting it again. In that
 case the helper cannot detect rejection, and a later caller can receive the
@@ -376,6 +391,7 @@ Proposed companion commands (separate from the prompt-only askpass executable):
 gtkaskpass-yubikey-cache serve --ttl 1h
 gtkaskpass-yubikey-cache forget --key ~/.ssh/id_ed25519 --kind passphrase
 gtkaskpass-yubikey-cache forget --key ~/.ssh/id_ed25519_sk --kind pin
+gtkaskpass-yubikey-cache forget --fingerprint SHA256:PUBLIC_KEY_FINGERPRINT
 gtkaskpass-yubikey-cache forget --all
 ```
 
@@ -383,6 +399,10 @@ The foreground command is for manual/service use; normally socket activation
 starts it. Forget-by-path removes all stored versions of that key/kind and must
 still work if the file has since been removed. Forgetting an empty/stopped cache
 is a successful no-op; no command displays a cached secret.
+`--fingerprint` forgets only that agent PIN entry and is mutually exclusive with
+`--key`, `--kind`, and `--all`. Existing protocol-v1 daemons reject the new
+fingerprint request shape and helpers fall back to prompting; upgrade/restart
+the daemon together with the frontend to enable the new cache namespace.
 
 #### Memory handling and relationship to ssh-agent
 
@@ -611,6 +631,16 @@ These tests prove a real caller can consume the executable's result. The
 notification harness proves the documented lifecycle independently of hardware;
 it must not be described as validation against a physical YubiKey.
 
+The agent regression additionally uses a test-only OpenSSL software FIDO provider
+implementing OpenSSH's provider ABI. It creates disposable keys and requires a
+synthetic PIN, causing the real `ssh-agent` to emit both supported PIN prompts.
+Repeated `ssh-add -T` requests verify valid signatures and same-agent PIN reuse.
+A local Paramiko SSH test server then requests signing through a real OpenSSH
+agent-forwarding channel and verifies that it hits the same cache entry. The
+provider and server are never installed with the application and do not access
+hardware or the user's agent. These tests demonstrate protocol compatibility,
+not physical-touch verification.
+
 ### FIDO and desktop acceptance
 
 Document opt-in tests using a disposable FIDO SSH identity and a configured test
@@ -699,15 +729,16 @@ Third-party dependencies retain their own licenses and required notices.
 2. **Hardware path:** native FIDO SSH keys, as scoped in the approved design.
 3. **Cache semantics:** per-key passphrases and PINs, one-hour absolute default
    TTL, headless per-user daemon, and explicit forgetting. Cached responses are
-   candidates: same-caller re-prompts bypass them, but failures without a
-   re-prompt cannot be detected through askpass alone (section 5.1).
+   candidates: file-based same-caller re-prompts bypass them; agent prompts can
+   reuse them across operations and require explicit forgetting after rejection
+   because failures cannot be detected through askpass alone (section 5.1).
 4. **License (confirmed):** Apache-2.0 for project code and documentation.
 5. **Go module path:** `github.com/elafarge/gtkaskpass-yubikey`, updated from the
    initial local module path when public publication was authorized.
 
 Implementation verification and physical-token acceptance steps are recorded in
 `tests/README.md`. The application uses gotk4 v0.4.1 with the pinned Nix GTK4
-environment. Python is used only for the Wayland smoke and NixOS VM test drivers;
+environment. Python is used for Wayland, NixOS VM, and forwarded-agent test drivers;
 both installed executables and the main integration harness are written in Go.
 
 ## 11. Protocol and dependency references
