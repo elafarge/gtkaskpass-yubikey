@@ -144,10 +144,11 @@ check` and `config show` permit validation/inspection without starting the servi
 Settings load once at startup; applying edits requires a restart and clears the
 in-memory cache. Persistent public device preferences remain a separate file.
 
-The NixOS module generates JSON using `pkgs.formats.json` and supplies only
-`serve --config <store path>` instead of duplicating configuration in flags. This
-explicit file takes precedence over automatic user configuration, keeping NixOS
-policy deterministic. The standalone systemd unit runs `serve`, letting each user
+The NixOS and Home Manager modules generate JSON using `pkgs.formats.json` and
+supply only `serve --config <store path>` instead of duplicating configuration in
+flags. This explicit file takes precedence over automatic user configuration,
+keeping declarative settings deterministic. The standalone systemd unit runs
+`serve`, letting each user
 configure the same behavior through their XDG file. See `docs/CONFIGURATION.md`
 and `docs/DEPENDENCIES.md` for the schema and dependency-selection tradeoffs.
 
@@ -345,9 +346,9 @@ logging is suppressed; warnings/errors remain. Broken stderr must not affect
 the authentication result.
 
 Nix builds all three executables, wraps only the GTK worker, and supplies GTK4,
-CGO, libfido2, and runtime dependencies. The NixOS module installs the commands
-and graphical-session user service even with TTL zero. It exposes `cacheTTL`,
-`pinVerification`, and `touchNotifications`. Systemd manages the private runtime
+CGO, libfido2, and runtime dependencies. The NixOS and Home Manager modules install
+the commands and graphical-session user service even with TTL zero. They expose
+`cacheTTL`, `pinVerification`, and `touchNotifications`. Systemd manages the private runtime
 directory and its cleanup on restart; the daemon binds its own request socket.
 Upgrade adapter/service/worker together; restarts clear caches.
 The service runs as the user and relies on normal device ACLs rather than root.

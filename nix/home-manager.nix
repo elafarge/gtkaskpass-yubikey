@@ -9,15 +9,23 @@ let
 in {
   options.services.ssh-askpass-fido = import ./options.nix { inherit self lib pkgs; };
   config = lib.mkIf cfg.enable {
-    programs.ssh.enableAskPassword = true;
-    programs.ssh.askPassword = executable;
-    environment.systemPackages = [ cfg.package ];
+    assertions = [
+      {
+        assertion = pkgs.stdenv.hostPlatform.isLinux;
+        message = "services.ssh-askpass-fido requires Linux.";
+      }
+    ];
+    home.packages = [ cfg.package ];
+    home.sessionVariables.SSH_ASKPASS = executable;
+    systemd.user.sessionVariables.SSH_ASKPASS = executable;
     systemd.user.services.ssh-askpass-fido = {
-      description = "SSH askpass service and passive FIDO2 touch monitor";
-      wantedBy = [ "graphical-session.target" ];
-      partOf = [ "graphical-session.target" ];
-      after = [ "graphical-session-pre.target" ];
-      serviceConfig = {
+      Unit = {
+        Description = "SSH askpass service and passive FIDO2 touch monitor";
+        PartOf = [ "graphical-session.target" ];
+        After = [ "graphical-session-pre.target" ];
+      };
+      Install.WantedBy = [ "graphical-session.target" ];
+      Service = {
         ExecStart = "${cfg.package}/bin/ssh-askpass-fido-service serve --config ${configFile}";
         Restart = "on-failure";
         RuntimeDirectory = "ssh-askpass-fido";

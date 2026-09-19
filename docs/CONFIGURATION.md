@@ -105,9 +105,10 @@ it naturally uses the user's config file. Touch monitoring is enabled by default
 headless users and tests can disable it explicitly. An example YAML file is
 installed under `share/ssh-askpass-fido/config.example.yaml`.
 
-## NixOS
+## NixOS and Home Manager
 
-The existing module options remain the user-facing configuration:
+Both `nixosModules.default` and `homeManagerModules.default` expose the same
+`services.ssh-askpass-fido` options and configure a graphical-session user service:
 
 ```nix
 services.ssh-askpass-fido = {
@@ -119,10 +120,10 @@ services.ssh-askpass-fido = {
 };
 ```
 
-The module generates a JSON file in the Nix store and starts the service with
+Each module generates a JSON file in the Nix store and starts the service with
 `serve --config /nix/store/…-ssh-askpass-fido-config.json`. It no longer encodes
 the settings as individual command-line flags. Because the file is explicitly
-selected, a user's XDG config does not override the declarative NixOS policy.
+selected, a user's XDG config does not override the declarative module settings.
 Use the module options to change it; changes to the generated file's store path
 cause the service definition to change on rebuild.
 

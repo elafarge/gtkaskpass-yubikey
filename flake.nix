@@ -19,6 +19,7 @@
         };
       });
       nixosModules.default = import ./nix/module.nix { inherit self; };
+      homeManagerModules.default = import ./nix/home-manager.nix { inherit self; };
       checks = forAllSystems (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};

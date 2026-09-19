@@ -21,8 +21,9 @@ needs a touch. Works with compatible FIDO2 devices, not just YubiKeys.
   notifications, and cancellation.
 - **Lightweight Go service and GTK4 dialogs**, supporting Wayland and X11.
   Credentials stay in memory; only public device preferences persist.
+- **NixOS and Home Manager modules** for declarative setup of the user service.
 
-## Install and configure (NixOS)
+## Install and configure (NixOS / Home Manager)
 
 Add the flake input:
 
@@ -30,7 +31,13 @@ Add the flake input:
 inputs.ssh-askpass-fido.url = "github:elafarge/ssh-askpass-fido";
 ```
 
-Then import its module (`inputs` must be supplied through NixOS `specialArgs`):
+Choose one module to manage the service for a given user. Both create a
+**systemd user service** tied to `graphical-session.target`. The NixOS module
+provides it for users of the system; Home Manager configures it for one user.
+
+### NixOS
+
+Import the module (`inputs` must be supplied through NixOS `specialArgs`):
 
 ```nix
 { inputs, ... }: {
@@ -44,9 +51,41 @@ Then import its module (`inputs` must be supplied through NixOS `specialArgs`):
 }
 ```
 
-Rebuild NixOS. The service runs with your graphical session. Configure your SSH
-agent to inherit `SSH_ASKPASS` and the desktop environment; for terminal input,
-set `SSH_ASKPASS_REQUIRE=prefer` if you want GUI prompts. Restart existing agents
+Rebuild NixOS to apply the configuration.
+
+### Home Manager
+
+Import the Home Manager module in your home configuration. Pass
+`extraSpecialArgs = { inherit inputs; };` to `home-manager.lib.homeManagerConfiguration`,
+or set `home-manager.extraSpecialArgs = { inherit inputs; };` when using
+Home Manager's NixOS integration:
+
+```nix
+{ inputs, ... }: {
+  imports = [ inputs.ssh-askpass-fido.homeManagerModules.default ];
+  services.ssh-askpass-fido = {
+    enable = true;
+    cacheTTL = "1h";             # "0" disables caching
+    pinVerification = "required";
+    touchNotifications = true;
+  };
+}
+```
+
+Run `home-manager switch` (or rebuild NixOS for integrated Home Manager).
+The module installs the commands and sets `SSH_ASKPASS` in your home session
+and systemd user environment. All service options, including `package` and
+metadata-only `trace`, are shared with the NixOS module.
+
+### Graphical session and SSH agent
+
+Log out and back in after initial setup so the session picks up its environment.
+Your desktop/compositor must start `graphical-session.target` and import its
+display environment into the systemd user manager. Check the service with
+`systemctl --user status ssh-askpass-fido.service`.
+
+Configure your SSH agent to inherit `SSH_ASKPASS` and the desktop environment;
+for terminal input, set `SSH_ASKPASS_REQUIRE=prefer` if you want GUI prompts. Restart existing agents
 after changing their environment and reload their keys as needed.
 
 To forget cached credentials:
@@ -59,8 +98,10 @@ ssh-askpass-fido-service forget --all
 [Upgrade/rename guide](docs/MIGRATION.md) ·
 [Troubleshooting](docs/USAGE.md)
 
-NixOS is the supported packaging path. Contributions for other Linux distributions
-and package managers are welcome.
+NixOS and Home Manager on Linux are the supported declarative packaging paths.
+On non-NixOS hosts, GTK applications need working host graphics integration and
+your user needs access to the FIDO hidraw devices (typically via host udev rules).
+Contributions for other package managers are welcome.
 
 ## Floating windows
 
